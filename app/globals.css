@@ -55,18 +55,117 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%239C92AC' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
   }
 }
 
+/* Casino-style background patterns */
+.casino-table {
+  background: linear-gradient(135deg, #0d4f2c 0%, #1a5f3f 25%, #0d4f2c 50%, #1a5f3f 75%, #0d4f2c 100%);
+  background-size: 60px 60px;
+  position: relative;
+}
+
+.casino-table::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: radial-gradient(circle at 20px 20px, rgba(255, 215, 0, 0.1) 2px, transparent 2px),
+    radial-gradient(circle at 40px 40px, rgba(255, 215, 0, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px, 30px 30px;
+  pointer-events: none;
+}
+
+.casino-table::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(45deg, transparent 40%, rgba(255, 215, 0, 0.03) 50%, transparent 60%),
+    linear-gradient(-45deg, transparent 40%, rgba(255, 215, 0, 0.03) 50%, transparent 60%);
+  background-size: 120px 120px;
+  pointer-events: none;
+}
+
+.game-card {
+  background: linear-gradient(145deg, #1a7a3e 0%, #0f5d2a 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.game-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 215, 0, 0.05) 10px,
+      rgba(255, 215, 0, 0.05) 11px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 215, 0, 0.05) 10px,
+      rgba(255, 215, 0, 0.05) 11px
+    );
+  pointer-events: none;
+}
+
+.felt-pattern {
+  background: linear-gradient(135deg, #1a7a3e 0%, #0f5d2a 50%, #1a7a3e 100%);
+  position: relative;
+}
+
+.felt-pattern::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: radial-gradient(circle at 25% 25%, rgba(255, 215, 0, 0.1) 2px, transparent 2px),
+    radial-gradient(circle at 75% 75%, rgba(255, 215, 0, 0.1) 2px, transparent 2px),
+    linear-gradient(45deg, transparent 30%, rgba(255, 215, 0, 0.02) 50%, transparent 70%);
+  background-size: 40px 40px, 40px 40px, 80px 80px;
+  pointer-events: none;
+}
+
 .letter-tile {
-  @apply relative flex items-center justify-center text-2xl font-bold bg-amber-100 border-2 border-amber-700 rounded-md shadow-md cursor-pointer select-none transition-all duration-150 ease-in-out;
-  width: 60px;
-  height: 60px;
+  @apply relative flex items-center justify-center text-2xl font-bold rounded-md shadow-lg cursor-pointer select-none transition-all duration-200 ease-in-out;
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(145deg, #f5deb3 0%, #deb887 100%);
+  border: 2px solid #8b4513;
+  box-shadow: inset 2px 2px 4px rgba(255, 255, 255, 0.3), inset -2px -2px 4px rgba(139, 69, 19, 0.3), 0 4px 8px
+    rgba(0, 0, 0, 0.2);
+}
+
+.letter-tile::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 50%);
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .letter-tile:hover {
-  @apply transform scale-105 bg-amber-200;
+  @apply transform scale-105;
+  box-shadow: inset 2px 2px 4px rgba(255, 255, 255, 0.4), inset -2px -2px 4px rgba(139, 69, 19, 0.4), 0 6px 12px
+    rgba(0, 0, 0, 0.3);
 }
 
 .letter-tile:active {
@@ -74,60 +173,185 @@
 }
 
 .letter-slot {
-  @apply flex items-center justify-center text-2xl font-bold bg-white border-2 border-gray-300 rounded-md shadow-sm;
-  width: 60px;
-  height: 60px;
+  @apply flex items-center justify-center text-2xl font-bold rounded-md shadow-inner transition-all duration-300;
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(145deg, #0f5d2a 0%, #1a7a3e 100%);
+  border: 2px solid #8b4513;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .letter-slot.filled {
-  @apply bg-amber-50 border-amber-500;
+  background: linear-gradient(145deg, #2d8f4f 0%, #1a7a3e 100%);
+  border-color: #deb887;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(222, 184, 135, 0.3);
 }
 
 .letter-slot.correct {
-  @apply bg-green-100 border-green-500;
-  animation: correct-flash 0.5s;
+  background: linear-gradient(145deg, #22c55e 0%, #16a34a 100%);
+  border-color: #fbbf24;
+  animation: correct-flash 0.5s ease-in-out;
 }
 
 .letter-slot.incorrect {
-  @apply bg-red-100 border-red-500;
-  animation: incorrect-flash 0.5s;
+  background: linear-gradient(145deg, #ef4444 0%, #dc2626 100%);
+  border-color: #fbbf24;
+  animation: incorrect-flash 0.5s ease-in-out;
 }
 
 .letter-slot.bonus {
-  @apply bg-yellow-100 border-yellow-500;
-  animation: bonus-flash 1s;
+  background: linear-gradient(145deg, #fbbf24 0%, #f59e0b 100%);
+  border-color: #8b4513;
+  animation: bonus-flash 1s ease-in-out;
 }
 
 @keyframes correct-flash {
   0%,
   100% {
-    background-color: theme("colors.green.100");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 rgba(34, 197, 94, 0.5);
   }
   50% {
-    background-color: theme("colors.green.300");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 20px rgba(34, 197, 94, 0.8);
   }
 }
 
 @keyframes incorrect-flash {
   0%,
   100% {
-    background-color: theme("colors.red.100");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 rgba(239, 68, 68, 0.5);
   }
   50% {
-    background-color: theme("colors.red.300");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 20px rgba(239, 68, 68, 0.8);
   }
 }
 
 @keyframes bonus-flash {
   0%,
   100% {
-    background-color: theme("colors.yellow.100");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 rgba(251, 191, 36, 0.5);
+  }
+  25%,
+  75% {
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 30px rgba(251, 191, 36, 0.9);
   }
   50% {
-    background-color: theme("colors.yellow.300");
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 40px rgba(251, 191, 36, 1);
   }
 }
 
-.game-board {
-  background-image: url("data:image/svg+xml,%3Csvg width='52' height='26' viewBox='0 0 52 26' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23815c3d' fill-opacity='0.1'%3E%3Cpath d='M10 10c0-2.21-1.79-4-4-4-3.314 0-6-2.686-6-6h2c0 2.21 1.79 4 4 4 3.314 0 6 2.686 6 6 0 2.21 1.79 4 4 4 3.314 0 6 2.686 6 6 0 2.21 1.79 4 4 4v2c-3.314 0-6-2.686-6-6 0-2.21-1.79-4-4-4-3.314 0-6-2.686-6-6zm25.464-1.95l8.486 8.486-1.414 1.414-8.486-8.486 1.414-1.414z' /%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+.wood-button {
+  background: linear-gradient(145deg, #deb887 0%, #cd853f 100%);
+  border: 2px solid #8b4513;
+  box-shadow: inset 2px 2px 4px rgba(255, 255, 255, 0.3), inset -2px -2px 4px rgba(139, 69, 19, 0.3), 0 4px 8px
+    rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.wood-button:hover {
+  background: linear-gradient(145deg, #cd853f 0%, #a0522d 100%);
+  box-shadow: inset 2px 2px 4px rgba(255, 255, 255, 0.2), inset -2px -2px 4px rgba(139, 69, 19, 0.4), 0 6px 12px
+    rgba(0, 0, 0, 0.3);
+}
+
+.wood-button:active {
+  box-shadow: inset 4px 4px 8px rgba(139, 69, 19, 0.4), inset -2px -2px 4px rgba(255, 255, 255, 0.1), 0 2px 4px
+    rgba(0, 0, 0, 0.2);
+}
+
+.wood-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: linear-gradient(145deg, #d3d3d3 0%, #a9a9a9 100%);
+}
+
+.score-card {
+  background: linear-gradient(145deg, #0f5d2a 0%, #1a7a3e 100%);
+  border: 2px solid #8b4513;
+  position: relative;
+  overflow: hidden;
+}
+
+.score-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: radial-gradient(circle at 20% 20%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
+    radial-gradient(circle at 80% 80%, rgba(255, 215, 0, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+/* Sparkle animation for bonus words */
+@keyframes sparkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sparkle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #fbbf24;
+  border-radius: 50%;
+  animation: sparkle 1s ease-in-out infinite;
+}
+
+.sparkle:nth-child(1) {
+  top: 10%;
+  left: 20%;
+  animation-delay: 0s;
+}
+.sparkle:nth-child(2) {
+  top: 20%;
+  right: 20%;
+  animation-delay: 0.2s;
+}
+.sparkle:nth-child(3) {
+  bottom: 20%;
+  left: 30%;
+  animation-delay: 0.4s;
+}
+.sparkle:nth-child(4) {
+  bottom: 10%;
+  right: 30%;
+  animation-delay: 0.6s;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .letter-tile {
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+  }
+
+  .letter-slot {
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .letter-tile {
+    width: 40px;
+    height: 40px;
+    font-size: 1.125rem;
+  }
+
+  .letter-slot {
+    width: 40px;
+    height: 40px;
+    font-size: 1.125rem;
+  }
 }

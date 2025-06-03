@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/lib/auth-context"
-import { Loader2, Users, UserPlus } from "lucide-react"
+import { Loader2, Users, UserPlus, GamepadIcon } from "lucide-react"
+import { Navbar } from "@/components/navbar"
 
 export function MultiplayerLobby() {
   const router = useRouter()
@@ -80,130 +81,145 @@ export function MultiplayerLobby() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 game-board">
-      <div className="w-full max-w-md mx-auto bg-white/90 rounded-xl shadow-xl p-6">
-        <h1 className="text-3xl font-bold mb-6 text-center text-amber-900">Multiplayer Lobby</h1>
+    <>
+      <Navbar />
+      <div className="min-h-screen flex items-center justify-center p-4 pt-20 casino-table">
+        <div className="w-full max-w-md mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-6">
+          <div className="flex items-center justify-center mb-6">
+            <Users className="h-8 w-8 text-amber-300 mr-2" />
+            <h1 className="text-3xl font-bold text-amber-100">Multiplayer</h1>
+          </div>
 
-        <div className="space-y-6">
-          <motion.div
-            className="bg-amber-50 rounded-lg p-4 shadow-md"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <h2 className="text-xl font-bold mb-4 text-amber-800">Find Random Match</h2>
-
-            {!user && (
-              <div className="mb-4">
-                <Label htmlFor="random-username">Temporary Username</Label>
-                <Input
-                  id="random-username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter a username for this match"
-                  className="mb-4"
-                  disabled={isFindingMatch}
-                />
-              </div>
-            )}
-
-            <Button
-              className="w-full bg-amber-600 hover:bg-amber-700"
-              onClick={handleFindMatch}
-              disabled={isFindingMatch}
+          <div className="space-y-6">
+            <motion.div
+              className="score-card rounded-lg p-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
             >
-              {isFindingMatch ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Finding match...
-                </>
-              ) : (
-                <>
-                  <Users className="mr-2 h-4 w-4" />
-                  Find Random Match
-                </>
-              )}
-            </Button>
-          </motion.div>
-
-          <motion.div
-            className="bg-amber-50 rounded-lg p-4 shadow-md"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-xl font-bold mb-4 text-amber-800">Create Private Game</h2>
-            <Button
-              className="w-full bg-amber-600 hover:bg-amber-700"
-              onClick={handleCreateGame}
-              disabled={isCreatingGame}
-            >
-              {isCreatingGame ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating game...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Create Game
-                </>
-              )}
-            </Button>
-          </motion.div>
-
-          <motion.div
-            className="bg-amber-50 rounded-lg p-4 shadow-md"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <h2 className="text-xl font-bold mb-4 text-amber-800">Join Private Game</h2>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="game-id">Game ID</Label>
-                <Input
-                  id="game-id"
-                  value={gameId}
-                  onChange={(e) => setGameId(e.target.value.toUpperCase())}
-                  placeholder="Enter game ID"
-                  className="mb-4"
-                  disabled={isJoiningGame}
-                />
-              </div>
+              <h2 className="text-xl font-bold mb-4 text-amber-100 flex items-center">
+                <GamepadIcon className="h-5 w-5 mr-2 text-amber-300" />
+                Find Random Match
+              </h2>
 
               {!user && (
-                <div>
-                  <Label htmlFor="join-username">Temporary Username</Label>
+                <div className="mb-4">
+                  <Label htmlFor="random-username" className="text-amber-200">
+                    Temporary Username
+                  </Label>
                   <Input
-                    id="join-username"
+                    id="random-username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter a username for this match"
-                    className="mb-4"
-                    disabled={isJoiningGame}
+                    className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                    disabled={isFindingMatch}
                   />
                 </div>
               )}
 
               <Button
-                className="w-full bg-amber-600 hover:bg-amber-700"
-                onClick={handleJoinGame}
-                disabled={isJoiningGame}
+                className="w-full wood-button text-amber-900 font-semibold py-3"
+                onClick={handleFindMatch}
+                disabled={isFindingMatch}
               >
-                {isJoiningGame ? (
+                {isFindingMatch ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Joining game...
+                    Finding match...
                   </>
                 ) : (
-                  "Join Game"
+                  <>
+                    <Users className="mr-2 h-4 w-4" />
+                    Find Random Match
+                  </>
                 )}
               </Button>
-            </div>
-          </motion.div>
+            </motion.div>
+
+            <motion.div
+              className="score-card rounded-lg p-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <h2 className="text-xl font-bold mb-4 text-amber-100">Create Private Game</h2>
+              <Button
+                className="w-full wood-button text-amber-900 font-semibold py-3"
+                onClick={handleCreateGame}
+                disabled={isCreatingGame}
+              >
+                {isCreatingGame ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating game...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Create Game
+                  </>
+                )}
+              </Button>
+            </motion.div>
+
+            <motion.div
+              className="score-card rounded-lg p-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <h2 className="text-xl font-bold mb-4 text-amber-100">Join Private Game</h2>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="game-id" className="text-amber-200">
+                    Game ID
+                  </Label>
+                  <Input
+                    id="game-id"
+                    value={gameId}
+                    onChange={(e) => setGameId(e.target.value.toUpperCase())}
+                    placeholder="Enter game ID"
+                    className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                    disabled={isJoiningGame}
+                  />
+                </div>
+
+                {!user && (
+                  <div>
+                    <Label htmlFor="join-username" className="text-amber-200">
+                      Temporary Username
+                    </Label>
+                    <Input
+                      id="join-username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter a username for this match"
+                      className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                      disabled={isJoiningGame}
+                    />
+                  </div>
+                )}
+
+                <Button
+                  className="w-full wood-button text-amber-900 font-semibold py-3"
+                  onClick={handleJoinGame}
+                  disabled={isJoiningGame}
+                >
+                  {isJoiningGame ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Joining game...
+                    </>
+                  ) : (
+                    "Join Game"
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

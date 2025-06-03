@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, UserPlus } from "lucide-react"
 
 interface SignupModalProps {
   onClose: () => void
+  onLoginClick?: () => void
 }
 
-export function SignupModal({ onClose }: SignupModalProps) {
+export function SignupModal({ onClose, onLoginClick }: SignupModalProps) {
   const { signup } = useAuth()
   const { toast } = useToast()
   const [username, setUsername] = useState("")
@@ -45,57 +46,51 @@ export function SignupModal({ onClose }: SignupModalProps) {
       return
     }
 
+    if (password.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
-      await signup(username, email, password)
-      toast({
-        title: "Success",
-        description: "Your account has been created",
-      })
+      await signup(email, password, username)
       onClose()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create account",
-        variant: "destructive",
-      })
-    } finally {
+      // Error is handled in the auth context
       setLoading(false)
     }
   }
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
     >
       <motion.div
-        className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md"
+        className="game-card border-4 border-amber-600 rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-2xl font-bold mb-4 text-amber-900">Sign Up</h2>
+        <div className="flex items-center justify-center mb-6">
+          <UserPlus className="h-8 w-8 text-amber-300 mr-2" />
+          <h2 className="text-2xl font-bold text-amber-100">Sign Up</h2>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Choose a username"
-              disabled={loading}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-amber-200">
+              Email
+            </Label>
             <Input
               id="email"
               type="email"
@@ -103,11 +98,28 @@ export function SignupModal({ onClose }: SignupModalProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
               disabled={loading}
+              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="username" className="text-amber-200">
+              Username
+            </Label>
+            <Input
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Choose a username"
+              disabled={loading}
+              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password" className="text-amber-200">
+              Password
+            </Label>
             <Input
               id="password"
               type="password"
@@ -115,11 +127,14 @@ export function SignupModal({ onClose }: SignupModalProps) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Create a password"
               disabled={loading}
+              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword" className="text-amber-200">
+              Confirm Password
+            </Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -127,10 +142,11 @@ export function SignupModal({ onClose }: SignupModalProps) {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm your password"
               disabled={loading}
+              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
             />
           </div>
 
-          <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700" disabled={loading}>
+          <Button type="submit" className="w-full wood-button text-amber-900 font-semibold py-3" disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -143,7 +159,15 @@ export function SignupModal({ onClose }: SignupModalProps) {
         </form>
 
         <div className="mt-4 text-center">
-          <Button variant="link" className="text-amber-700" onClick={onClose}>
+          {onLoginClick && (
+            <div className="mb-3 text-amber-200">
+              Already have an account?{" "}
+              <button className="text-amber-300 hover:text-amber-100 underline" onClick={onLoginClick}>
+                Log in
+              </button>
+            </div>
+          )}
+          <Button variant="link" className="text-amber-300 hover:text-amber-100" onClick={onClose}>
             Cancel
           </Button>
         </div>

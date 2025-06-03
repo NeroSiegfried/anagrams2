@@ -1,6 +1,7 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { useToast } from "@/components/ui/use-toast"
 
 interface GameSettings {
   letterCount: number
@@ -9,18 +10,38 @@ interface GameSettings {
   musicEnabled: boolean
 }
 
+interface SubWord {
+  text: string
+  definition: string
+}
+
+interface GameState {
+  isActive: boolean
+  letters: string[]
+  foundWords: string[]
+  score: number
+  timeLeft: number
+  baseWord: string | null
+  currentRound: number
+  gameId: string | null
+  currentLetterCount: number // Track the current game's letter count
+}
+
 interface GameContextType {
   gameSettings: GameSettings
   updateSettings: (settings: Partial<GameSettings>) => void
-  startGame: () => void
+  startNewGame: () => void
   endGame: () => void
+  resetGame: () => void
   validateWord: (word: string) => Promise<boolean>
   calculateScore: (wordLength: number) => number
   scrambleWord: (length: number) => string
-  isGameActive: boolean
-  currentRound: number
-  score: number
+  gameState: GameState
+  setGameState: (state: Partial<GameState>) => void
   addToScore: (points: number) => void
+  addFoundWord: (word: string) => void
+  allSubWords: SubWord[]
+  setAllSubWords: (words: SubWord[]) => void
 }
 
 const defaultSettings: GameSettings = {
@@ -30,11 +51,23 @@ const defaultSettings: GameSettings = {
   musicEnabled: true,
 }
 
+const defaultGameState: GameState = {
+  isActive: false,
+  letters: [],
+  foundWords: [],
+  score: 0,
+  timeLeft: 60,
+  baseWord: null,
+  currentRound: 0,
+  gameId: null,
+  currentLetterCount: 6, // Default letter count
+}
+
 const GameContext = createContext<GameContextType | undefined>(undefined)
 
 export function GameProvider({ children }: { children: ReactNode }) {
+  const { toast } = useToast()
   const [gameSettings, setGameSettings] = useState<GameSettings>(() => {
-    // Load settings from localStorage if available
     if (typeof window !== "undefined") {
       const savedSettings = localStorage.getItem("anagramsGameSettings")
       if (savedSettings) {
@@ -44,9 +77,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return defaultSettings
   })
 
-  const [isGameActive, setIsGameActive] = useState(false)
-  const [currentRound, setCurrentRound] = useState(1)
-  const [score, setScore] = useState(0)
+  const [gameState, setGameStateInternal] = useState<GameState>(defaultGameState)
+  const [allSubWords, setAllSubWords] = useState<SubWord[]>([])
 
   // Save settings to localStorage when they change
   useEffect(() => {
@@ -55,23 +87,45 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [gameSettings])
 
-  const updateSettings = (settings: Partial<GameSettings>) => {
+  const updateSettings = useCallback((settings: Partial<GameSettings>) => {
     setGameSettings((prev) => ({ ...prev, ...settings }))
-  }
+  }, [])
 
-  const startGame = () => {
-    setIsGameActive(true)
-    setCurrentRound((prev) => prev + 1)
-    setScore(0)
-  }
+  const setGameState = useCallback((newState: Partial<GameState>) => {
+    setGameStateInternal((prev) => ({ ...prev, ...newState }))
+  }, [])
 
-  const endGame = () => {
-    setIsGameActive(false)
-  }
+  const startNewGame = useCallback(() => {
+    // Generate a unique game ID
+    const newGameId = Math.random().toString(36).substring(2, 9)
 
-  const validateWord = async (word: string): Promise<boolean> => {
+    // Use the letter count from settings for the new game
+    const letterCount = gameSettings.letterCount
+    const scrambled = scrambleWord(letterCount)
+
+    setGameStateInternal({
+      isActive: true,
+      letters: scrambled.split(""),
+      foundWords: [],
+      score: 0,
+      timeLeft: gameSettings.roundDuration,
+      baseWord: null, // This will be set properly in scrambleWord
+      currentRound: gameState.currentRound + 1,
+      gameId: newGameId,
+      currentLetterCount: letterCount, // Set the current game's letter count
+    })
+  }, [gameSettings, gameState.currentRound])
+
+  const endGame = useCallback(() => {
+    setGameState({ isActive: false })
+  }, [setGameState])
+
+  const resetGame = useCallback(() => {
+    setGameStateInternal(defaultGameState)
+  }, [])
+
+  const validateWord = useCallback(async (word: string): Promise<boolean> => {
     try {
-      // In a real implementation, this would validate against a dictionary API
       const response = await fetch(`/api/validate-word?word=${word}`)
       const data = await response.json()
       return data.valid
@@ -79,83 +133,137 @@ export function GameProvider({ children }: { children: ReactNode }) {
       console.error("Error validating word:", error)
       return false
     }
-  }
+  }, [])
 
-  const calculateScore = (wordLength: number): number => {
+  const calculateScore = useCallback((wordLength: number): number => {
     if (wordLength === 3) return 100
     if (wordLength === 4) return 300
     if (wordLength === 5) return 1200
-    return 2000 // 6+ letters
-  }
+    if (wordLength === 6) return 2000
+    return 2000 + 400 * (wordLength - 6)
+  }, [])
 
-  const addToScore = (points: number) => {
-    setScore((prev) => prev + points)
-  }
+  const addToScore = useCallback(
+    (points: number) => {
+      setGameState({ score: gameState.score + points })
+    },
+    [gameState.score, setGameState],
+  )
 
-  const scrambleWord = (length: number): string => {
-    // In a real implementation, this would fetch a random word from a dictionary API
-    // For now, we'll use a predefined list of words
-    const sixLetterWords = [
-      "anagram",
-      "puzzle",
-      "gaming",
-      "letter",
-      "player",
-      "points",
-      "winner",
-      "losing",
-      "master",
-      "genius",
-      "wordle",
-      "scribe",
-      "typing",
-      "coding",
-      "syntax",
-      "script",
-      "design",
-      "create",
-      "invent",
-      "system",
-    ]
+  const addFoundWord = useCallback(
+    (word: string) => {
+      setGameState({ foundWords: [...gameState.foundWords, word] })
+    },
+    [gameState.foundWords, setGameState],
+  )
 
-    // Select a random word from the list
-    const randomIndex = Math.floor(Math.random() * sixLetterWords.length)
-    let word = sixLetterWords[randomIndex]
-
-    // If the requested length is different from 6, adjust the word
-    if (length > 6) {
-      // Add random letters to make it longer
-      const extraLetters = "abcdefghijklmnopqrstuvwxyz"
-      for (let i = 6; i < length; i++) {
-        const randomLetter = extraLetters[Math.floor(Math.random() * extraLetters.length)]
-        word += randomLetter
+  const scrambleWord = useCallback(
+    (length: number): string => {
+      const baseWords = {
+        6: [
+          "anagram",
+          "puzzle",
+          "gaming",
+          "letter",
+          "player",
+          "points",
+          "winner",
+          "master",
+          "genius",
+          "wordle",
+          "scribe",
+          "typing",
+          "coding",
+          "syntax",
+          "script",
+          "design",
+          "create",
+          "invent",
+          "system",
+        ],
+        7: [
+          "anagrams",
+          "puzzles",
+          "letters",
+          "players",
+          "winners",
+          "masters",
+          "scripts",
+          "designs",
+          "creates",
+          "invents",
+          "systems",
+        ],
+        8: [
+          "scramble",
+          "unscramble",
+          "wordplay",
+          "gameplay",
+          "keyboard",
+          "computer",
+          "software",
+          "hardware",
+          "internet",
+        ],
+        9: [
+          "anagrammed",
+          "scrambled",
+          "unscrambled",
+          "wordplays",
+          "gameplays",
+          "keyboards",
+          "computers",
+          "softwares",
+          "hardwares",
+        ],
+        10: [
+          "anagramming",
+          "scrambling",
+          "unscrambling",
+          "programming",
+          "developing",
+          "engineering",
+          "technology",
+          "algorithms",
+        ],
       }
-    }
 
-    // Scramble the letters
-    const letters = word.split("")
-    for (let i = letters.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[letters[i], letters[j]] = [letters[j], letters[i]]
-    }
+      const wordsForLength = baseWords[length as keyof typeof baseWords] || baseWords[6]
+      const randomIndex = Math.floor(Math.random() * wordsForLength.length)
+      const baseWord = wordsForLength[randomIndex]
 
-    return letters.join("")
-  }
+      // Update the base word in game state
+      setGameState({ baseWord })
+
+      // Scramble the letters
+      const letters = baseWord.split("")
+      for (let i = letters.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[letters[i], letters[j]] = [letters[j], letters[i]]
+      }
+
+      return letters.join("")
+    },
+    [setGameState],
+  )
 
   return (
     <GameContext.Provider
       value={{
         gameSettings,
         updateSettings,
-        startGame,
+        startNewGame,
         endGame,
+        resetGame,
         validateWord,
         calculateScore,
         scrambleWord,
-        isGameActive,
-        currentRound,
-        score,
+        gameState,
+        setGameState,
         addToScore,
+        addFoundWord,
+        allSubWords,
+        setAllSubWords,
       }}
     >
       {children}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Shuffle, Volume2, VolumeX, Clock } from "lucide-react"
+import { Shuffle, Volume2, VolumeX, Clock, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { useGame } from "@/lib/game-context"
@@ -11,7 +11,10 @@ import { FoundWordsList } from "@/components/found-words-list"
 import { ScoreDisplay } from "@/components/score-display"
 import { GameOverModal } from "@/components/game-over-modal"
 import { DefinitionModal } from "@/components/definition-modal"
+import { SettingsModal } from "@/components/settings-modal"
 import { useMultiplayer } from "@/lib/use-multiplayer"
+import { Navbar } from "@/components/navbar"
+import { AudioGenerator } from "@/lib/audio-generator"
 
 export function GameBoard({
   gameId,
@@ -24,113 +27,121 @@ export function GameBoard({
   const { user } = useAuth()
   const {
     gameSettings,
-    startGame,
+    startNewGame,
     endGame,
     validateWord,
     calculateScore,
-    scrambleWord,
-    isGameActive,
-    currentRound,
-    score,
+    gameState,
+    setGameState,
+    addToScore,
+    addFoundWord,
   } = useGame()
 
-  const [letters, setLetters] = useState<string[]>([])
   const [currentWord, setCurrentWord] = useState<string[]>([])
   const [selectedIndices, setSelectedIndices] = useState<number[]>([])
-  const [foundWords, setFoundWords] = useState<string[]>([])
-  const [timeLeft, setTimeLeft] = useState(gameSettings.roundDuration)
   const [isMuted, setIsMuted] = useState(false)
   const [showGameOver, setShowGameOver] = useState(false)
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
   const [showDefinition, setShowDefinition] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [feedbackState, setFeedbackState] = useState<"idle" | "correct" | "incorrect" | "bonus">("idle")
+  const [showSparkles, setShowSparkles] = useState(false)
 
-  const correctAudioRef = useRef<HTMLAudioElement | null>(null)
-  const incorrectAudioRef = useRef<HTMLAudioElement | null>(null)
-  const bonusAudioRef = useRef<HTMLAudioElement | null>(null)
-  const bgMusicRef = useRef<HTMLAudioElement | null>(null)
+  const audioGeneratorRef = useRef<AudioGenerator | null>(null)
+  const correctSoundRef = useRef<AudioBuffer | null>(null)
+  const incorrectSoundRef = useRef<AudioBuffer | null>(null)
+  const bonusSoundRef = useRef<AudioBuffer | null>(null)
+  const backgroundMusicRef = useRef<AudioBuffer | null>(null)
+  const backgroundSourceRef = useRef<AudioBufferSourceNode | null>(null)
 
   const { opponents, sendWordToServer, opponentScores } = useMultiplayer(gameId, multiplayer)
 
-  // Initialize audio elements
+  // Initialize audio generator and sounds
   useEffect(() => {
-    correctAudioRef.current = new Audio("/sounds/correct.mp3")
-    incorrectAudioRef.current = new Audio("/sounds/incorrect.mp3")
-    bonusAudioRef.current = new Audio("/sounds/bonus.mp3")
-    bgMusicRef.current = new Audio("/sounds/background-music.mp3")
+    if (typeof window !== "undefined") {
+      try {
+        audioGeneratorRef.current = new AudioGenerator()
 
-    if (bgMusicRef.current) {
-      bgMusicRef.current.loop = true
-      bgMusicRef.current.volume = 0.3
+        // Generate sound buffers
+        correctSoundRef.current = audioGeneratorRef.current.generateCorrectSound()
+        incorrectSoundRef.current = audioGeneratorRef.current.generateIncorrectSound()
+        bonusSoundRef.current = audioGeneratorRef.current.generateBonusSound()
+        backgroundMusicRef.current = audioGeneratorRef.current.generateBackgroundMusic()
 
-      if (!isMuted) {
-        bgMusicRef.current.play().catch((e) => console.log("Audio autoplay prevented:", e))
+        // Start background music if enabled
+        if (!isMuted && gameSettings.musicEnabled && backgroundMusicRef.current && audioGeneratorRef.current) {
+          const playBackgroundMusic = () => {
+            if (backgroundSourceRef.current) {
+              backgroundSourceRef.current.stop()
+            }
+
+            const audioContext = (audioGeneratorRef.current as any).audioContext
+            if (audioContext && backgroundMusicRef.current) {
+              backgroundSourceRef.current = audioContext.createBufferSource()
+              const gainNode = audioContext.createGain()
+
+              backgroundSourceRef.current.buffer = backgroundMusicRef.current
+              backgroundSourceRef.current.loop = true
+              gainNode.gain.value = 0.1
+
+              backgroundSourceRef.current.connect(gainNode)
+              gainNode.connect(audioContext.destination)
+
+              backgroundSourceRef.current.start()
+            }
+          }
+
+          playBackgroundMusic()
+        }
+      } catch (error) {
+        console.warn("Audio initialization failed:", error)
       }
     }
 
     return () => {
-      if (bgMusicRef.current) {
-        bgMusicRef.current.pause()
+      if (backgroundSourceRef.current) {
+        try {
+          backgroundSourceRef.current.stop()
+        } catch (error) {
+          console.warn("Error stopping background music:", error)
+        }
       }
     }
   }, [])
 
-  // Update audio mute state
+  // Always start a new game when component mounts
   useEffect(() => {
-    if (bgMusicRef.current) {
-      bgMusicRef.current.muted = isMuted
-    }
-    if (correctAudioRef.current) {
-      correctAudioRef.current.muted = isMuted
-    }
-    if (incorrectAudioRef.current) {
-      incorrectAudioRef.current.muted = isMuted
-    }
-    if (bonusAudioRef.current) {
-      bonusAudioRef.current.muted = isMuted
-    }
-  }, [isMuted])
-
-  // Start game and initialize letters
-  useEffect(() => {
-    if (!isGameActive) {
-      startGame()
-      const scrambled = scrambleWord(gameSettings.letterCount)
-      setLetters(scrambled.split(""))
-      setTimeLeft(gameSettings.roundDuration)
-      setFoundWords([])
-      setCurrentWord([])
-      setSelectedIndices([])
-    }
-  }, [isGameActive, startGame, scrambleWord, gameSettings])
+    startNewGame()
+    setCurrentWord([])
+    setSelectedIndices([])
+    setShowGameOver(false)
+  }, []) // Empty dependency array to run only on mount
 
   // Timer countdown
   useEffect(() => {
-    if (!isGameActive || timeLeft <= 0) return
+    if (!gameState.isActive || gameState.timeLeft <= 0) return
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          setShowGameOver(true)
-          endGame()
-          return 0
-        }
-        return prev - 1
-      })
+      setGameState({ timeLeft: gameState.timeLeft - 1 })
+
+      if (gameState.timeLeft <= 1) {
+        clearInterval(timer)
+        endGame()
+        setShowGameOver(true)
+      }
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [isGameActive, timeLeft, endGame])
+  }, [gameState.isActive, gameState.timeLeft, setGameState, endGame])
 
   // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isGameActive) return
+      if (!gameState.isActive || gameState.timeLeft <= 0 || showSettings) return
 
       // Letter keys
       if (/^[a-zA-Z]$/.test(e.key)) {
-        const letterIndex = letters.findIndex(
+        const letterIndex = gameState.letters.findIndex(
           (l, i) => l.toLowerCase() === e.key.toLowerCase() && !selectedIndices.includes(i),
         )
         if (letterIndex !== -1) {
@@ -156,12 +167,18 @@ export function GameBoard({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isGameActive, letters, selectedIndices, currentWord])
+  }, [gameState.isActive, gameState.timeLeft, gameState.letters, selectedIndices, currentWord, showSettings])
+
+  const playSound = (soundBuffer: AudioBuffer | null) => {
+    if (!isMuted && gameSettings.soundEnabled && audioGeneratorRef.current && soundBuffer) {
+      audioGeneratorRef.current.playBuffer(soundBuffer, 0.3)
+    }
+  }
 
   const addLetterToWord = (index: number) => {
-    if (selectedIndices.includes(index)) return
+    if (selectedIndices.includes(index) || currentWord.length >= gameState.currentLetterCount) return
 
-    setCurrentWord((prev) => [...prev, letters[index]])
+    setCurrentWord((prev) => [...prev, gameState.letters[index]])
     setSelectedIndices((prev) => [...prev, index])
   }
 
@@ -178,16 +195,18 @@ export function GameBoard({
   }
 
   const shuffleLetters = () => {
-    const newLetters = [...letters]
+    const newLetters = [...gameState.letters]
     for (let i = newLetters.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[newLetters[i], newLetters[j]] = [newLetters[j], newLetters[i]]
     }
-    setLetters(newLetters)
+    setGameState({ letters: newLetters })
     clearCurrentWord()
   }
 
   const submitWord = async () => {
+    if (gameState.timeLeft <= 0) return
+
     const word = currentWord.join("").toLowerCase()
 
     if (word.length < 3) {
@@ -197,23 +216,19 @@ export function GameBoard({
         variant: "destructive",
       })
       setFeedbackState("incorrect")
-      if (incorrectAudioRef.current && !isMuted) {
-        incorrectAudioRef.current.play()
-      }
+      playSound(incorrectSoundRef.current)
       setTimeout(() => setFeedbackState("idle"), 500)
       return
     }
 
-    if (foundWords.includes(word)) {
+    if (gameState.foundWords.includes(word)) {
       toast({
         title: "Already found",
         description: "You've already found this word",
         variant: "destructive",
       })
       setFeedbackState("incorrect")
-      if (incorrectAudioRef.current && !isMuted) {
-        incorrectAudioRef.current.play()
-      }
+      playSound(incorrectSoundRef.current)
       setTimeout(() => setFeedbackState("idle"), 500)
       return
     }
@@ -228,19 +243,18 @@ export function GameBoard({
         sendWordToServer(word, wordScore)
       }
 
-      setFoundWords((prev) => [...prev, word])
+      addFoundWord(word)
+      addToScore(wordScore)
 
       // Play sound and show feedback
       if (word.length >= 6) {
         setFeedbackState("bonus")
-        if (bonusAudioRef.current && !isMuted) {
-          bonusAudioRef.current.play()
-        }
+        setShowSparkles(true)
+        playSound(bonusSoundRef.current)
+        setTimeout(() => setShowSparkles(false), 1000)
       } else {
         setFeedbackState("correct")
-        if (correctAudioRef.current && !isMuted) {
-          correctAudioRef.current.play()
-        }
+        playSound(correctSoundRef.current)
       }
 
       toast({
@@ -250,9 +264,7 @@ export function GameBoard({
       })
     } else {
       setFeedbackState("incorrect")
-      if (incorrectAudioRef.current && !isMuted) {
-        incorrectAudioRef.current.play()
-      }
+      playSound(incorrectSoundRef.current)
 
       toast({
         title: "Invalid word",
@@ -261,7 +273,7 @@ export function GameBoard({
       })
     }
 
-    setTimeout(() => setFeedbackState("idle"), 500)
+    setTimeout(() => setFeedbackState("idle"), word.length >= 6 ? 1000 : 500)
     clearCurrentWord()
   }
 
@@ -277,122 +289,180 @@ export function GameBoard({
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 game-board">
-      <div className="w-full max-w-4xl mx-auto bg-white/90 rounded-xl shadow-xl p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center">
-            <Clock className="mr-2 text-amber-700" />
-            <span className="text-2xl font-bold text-amber-800">{formatTime(timeLeft)}</span>
-          </div>
+    <>
+      <Navbar onSettingsClick={() => setShowSettings(true)} />
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 pt-20 casino-table">
+        <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-4 sm:p-6 relative">
+          {showSparkles && (
+            <>
+              <div className="sparkle" />
+              <div className="sparkle" />
+              <div className="sparkle" />
+              <div className="sparkle" />
+            </>
+          )}
 
-          <h1 className="text-3xl font-bold text-center text-amber-900">Round {currentRound}</h1>
+          <div className="flex justify-between items-center mb-4 sm:mb-6">
+            <div className="flex items-center">
+              <Clock className="mr-2 text-amber-300" />
+              <span className="text-xl sm:text-2xl font-bold text-amber-100 font-mono">
+                {formatTime(gameState.timeLeft)}
+              </span>
+            </div>
 
-          <Button variant="ghost" size="icon" onClick={() => setIsMuted(!isMuted)} className="text-amber-700">
-            {isMuted ? <VolumeX /> : <Volume2 />}
-          </Button>
-        </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-center text-amber-100">
+              Round {gameState.currentRound}
+            </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="flex flex-col items-center">
-            <ScoreDisplay score={score} username={user?.username || "Guest"} />
-
-            {multiplayer && (
-              <div className="mt-4 w-full">
-                <h3 className="text-lg font-semibold mb-2 text-amber-800">Opponents</h3>
-                <div className="space-y-2">
-                  {opponents.map((opponent, i) => (
-                    <div key={i} className="flex justify-between items-center p-2 bg-amber-50 rounded">
-                      <span>{opponent}</span>
-                      <span className="font-bold">{opponentScores[opponent] || 0}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <FoundWordsList words={foundWords} onWordClick={handleWordClick} />
-        </div>
-
-        <div className="mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="flex space-x-2">
-              {Array.from({ length: gameSettings.letterCount }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`letter-slot ${
-                    i < currentWord.length ? `filled ${feedbackState !== "idle" ? feedbackState : ""}` : ""
-                  }`}
-                >
-                  {i < currentWord.length && currentWord[i]}
-                </div>
-              ))}
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMuted(!isMuted)}
+                className="text-amber-300 hover:text-amber-100 hover:bg-green-800"
+              >
+                {isMuted ? <VolumeX /> : <Volume2 />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-amber-300 hover:text-amber-100 hover:bg-green-800"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowSettings(true)
+                }}
+              >
+                <Settings />
+              </Button>
             </div>
           </div>
 
-          <div className="flex justify-center items-center space-x-4">
-            <Button variant="outline" onClick={clearCurrentWord} className="border-amber-600 text-amber-800">
-              Clear
-            </Button>
-
-            <Button onClick={submitWord} className="bg-amber-600 hover:bg-amber-700" disabled={currentWord.length < 3}>
-              Submit
-            </Button>
-
-            <Button variant="outline" size="icon" onClick={shuffleLetters} className="border-amber-600 text-amber-800">
-              <Shuffle className="h-4 w-4" />
-            </Button>
+          {/* Tiles first (above) on mobile and desktop */}
+          <div className="mb-6">
+            <div className="flex justify-center mb-4">
+              <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+                {gameState.letters.map((letter, i) => (
+                  <motion.div
+                    key={i}
+                    className={`letter-tile ${selectedIndices.includes(i) ? "opacity-50" : ""}`}
+                    whileHover={selectedIndices.includes(i) || gameState.timeLeft <= 0 ? {} : { scale: 1.05 }}
+                    whileTap={selectedIndices.includes(i) || gameState.timeLeft <= 0 ? {} : { scale: 0.95 }}
+                    onClick={() => !selectedIndices.includes(i) && gameState.timeLeft > 0 && addLetterToWord(i)}
+                  >
+                    <span className="text-2xl font-bold text-amber-900 z-10 relative">{letter}</span>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="flex justify-center mb-4">
-          <div className="flex flex-wrap justify-center gap-2">
-            {letters.map((letter, i) => (
-              <motion.div
-                key={i}
-                className={`letter-tile ${selectedIndices.includes(i) ? "opacity-50" : ""}`}
-                whileHover={{ scale: selectedIndices.includes(i) ? 1 : 1.05 }}
-                whileTap={{ scale: selectedIndices.includes(i) ? 1 : 0.95 }}
-                onClick={() => !selectedIndices.includes(i) && addLetterToWord(i)}
+          {/* Slots below tiles */}
+          <div className="mb-6">
+            <div className="flex justify-center mb-4 overflow-x-auto pb-2">
+              <div className="flex space-x-2 sm:space-x-3">
+                {Array.from({ length: gameState.currentLetterCount }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`letter-slot ${
+                      i < currentWord.length ? `filled ${feedbackState !== "idle" ? feedbackState : ""}` : ""
+                    }`}
+                  >
+                    {i < currentWord.length && (
+                      <span className="text-2xl font-bold text-amber-100">{currentWord[i]}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-center items-center space-x-2 sm:space-x-4 mb-6">
+              <button
+                className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                onClick={clearCurrentWord}
+                disabled={gameState.timeLeft <= 0 || currentWord.length === 0}
               >
-                {letter}
-              </motion.div>
-            ))}
+                Clear
+              </button>
+
+              <button
+                className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                onClick={submitWord}
+                disabled={gameState.timeLeft <= 0 || currentWord.length < 3}
+              >
+                Submit
+              </button>
+
+              <button
+                className="wood-button px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                onClick={shuffleLetters}
+                disabled={gameState.timeLeft <= 0}
+              >
+                <Shuffle className="h-5 w-5" />
+              </button>
+            </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            <div className="flex flex-col items-center">
+              <ScoreDisplay score={gameState.score} username={user?.username || "Guest"} />
+
+              {multiplayer && (
+                <div className="mt-4 w-full score-card rounded-lg p-4 shadow-md">
+                  <h3 className="text-lg font-semibold mb-2 text-amber-100">Opponents</h3>
+                  <div className="space-y-2">
+                    {opponents.map((opponent, i) => (
+                      <div key={i} className="flex justify-between items-center p-2 felt-pattern rounded">
+                        <span className="text-amber-100">{opponent}</span>
+                        <span className="font-bold text-amber-300">{opponentScores[opponent] || 0}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <FoundWordsList words={gameState.foundWords} onWordClick={handleWordClick} />
+          </div>
+
+          {gameState.timeLeft <= 0 && (
+            <motion.div
+              className="text-center mt-4"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, type: "spring" }}
+            >
+              <p className="text-2xl font-bold text-red-400 mb-2">Time's Up!</p>
+              <p className="text-amber-200">Final Score: {gameState.score}</p>
+            </motion.div>
+          )}
         </div>
+
+        <AnimatePresence>
+          {showGameOver && (
+            <GameOverModal
+              score={gameState.score}
+              foundWords={gameState.foundWords}
+              baseWord={gameState.baseWord}
+              onClose={() => setShowGameOver(false)}
+              onPlayAgain={() => {
+                setShowGameOver(false)
+                startNewGame()
+                setCurrentWord([])
+                setSelectedIndices([])
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showDefinition && selectedWord && (
+            <DefinitionModal word={selectedWord} onClose={() => setShowDefinition(false)} />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>{showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}</AnimatePresence>
       </div>
-
-      <AnimatePresence>
-        {showGameOver && (
-          <GameOverModal
-            score={score}
-            foundWords={foundWords}
-            onClose={() => setShowGameOver(false)}
-            onPlayAgain={() => {
-              setShowGameOver(false)
-              startGame()
-              const scrambled = scrambleWord(gameSettings.letterCount)
-              setLetters(scrambled.split(""))
-              setTimeLeft(gameSettings.roundDuration)
-              setFoundWords([])
-              setCurrentWord([])
-              setSelectedIndices([])
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showDefinition && selectedWord && (
-          <DefinitionModal word={selectedWord} onClose={() => setShowDefinition(false)} />
-        )}
-      </AnimatePresence>
-
-      {/* Hidden audio elements */}
-      <audio ref={correctAudioRef} src="/sounds/correct.mp3" preload="auto" />
-      <audio ref={incorrectAudioRef} src="/sounds/incorrect.mp3" preload="auto" />
-      <audio ref={bonusAudioRef} src="/sounds/bonus.mp3" preload="auto" />
-      <audio ref={bgMusicRef} src="/sounds/background-music.mp3" preload="auto" loop />
-    </div>
+    </>
   )
 }

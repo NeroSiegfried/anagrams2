@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getWordDefinition } from "@/lib/word-service"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -9,112 +10,52 @@ export async function GET(request: Request) {
   }
 
   try {
-    // In a real implementation, this would use a dictionary API
-    // For demo purposes, we'll generate mock definitions
+    const definition = await getWordDefinition(word)
 
-    const mockDefinitions = {
-      apple: {
-        word: "apple",
-        phonetic: "/ˈæp.əl/",
+    if (!definition) {
+      // Generate a generic definition for words not in our database
+      const genericDefinition = {
+        word: word,
+        phonetic: `/${word}/`,
         meanings: [
           {
-            partOfSpeech: "noun",
+            partOfSpeech: Math.random() > 0.5 ? "noun" : "verb",
             definitions: [
               {
-                definition:
-                  "The round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.",
-                example: "She bit into the juicy apple.",
+                definition: `A ${word} is a common English word.`,
+                example: `The ${word} was used in a sentence.`,
               },
             ],
           },
         ],
-      },
-      banana: {
-        word: "banana",
-        phonetic: "/bəˈnɑː.nə/",
-        meanings: [
-          {
-            partOfSpeech: "noun",
-            definitions: [
-              {
-                definition: "A long curved fruit with a yellow skin and soft sweet flesh.",
-                example: "He peeled the banana before eating it.",
-              },
-            ],
-          },
-        ],
-      },
-      game: {
-        word: "game",
-        phonetic: "/ɡeɪm/",
-        meanings: [
-          {
-            partOfSpeech: "noun",
-            definitions: [
-              {
-                definition: "An activity that one engages in for amusement or fun.",
-                example: "The children were playing a game in the garden.",
-              },
-              {
-                definition:
-                  "A competitive activity involving skill, chance, or endurance on the part of two or more persons who play according to a set of rules.",
-                example: "We played a game of chess.",
-              },
-            ],
-          },
-          {
-            partOfSpeech: "adjective",
-            definitions: [
-              {
-                definition: "Eager or willing to do something new or challenging.",
-                example: "I'm game for whatever you want to do tonight.",
-              },
-            ],
-          },
-        ],
-      },
-      anagram: {
-        word: "anagram",
-        phonetic: "/ˈæn.ə.ɡræm/",
-        meanings: [
-          {
-            partOfSpeech: "noun",
-            definitions: [
-              {
-                definition:
-                  "A word or phrase formed by rearranging the letters of a different word or phrase, typically using all the original letters exactly once.",
-                example: "The word 'listen' is an anagram of 'silent'.",
-              },
-            ],
-          },
-        ],
-      },
+      }
+
+      return NextResponse.json(genericDefinition)
     }
 
-    // Check if we have a mock definition for this word
-    if (mockDefinitions[word as keyof typeof mockDefinitions]) {
-      return NextResponse.json(mockDefinitions[word as keyof typeof mockDefinitions])
+    // Parse the stored definition JSON
+    try {
+      const parsedDefinition = JSON.parse(definition)
+      return NextResponse.json(parsedDefinition)
+    } catch {
+      // If parsing fails, return a simple definition object
+      return NextResponse.json({
+        word: word,
+        phonetic: `/${word}/`,
+        meanings: [
+          {
+            partOfSpeech: "noun",
+            definitions: [
+              {
+                definition: definition,
+              },
+            ],
+          },
+        ],
+      })
     }
-
-    // Generate a generic definition for words not in our mock list
-    const genericDefinition = {
-      word: word,
-      phonetic: `/${word}/`,
-      meanings: [
-        {
-          partOfSpeech: Math.random() > 0.5 ? "noun" : "verb",
-          definitions: [
-            {
-              definition: `A ${word} is a common English word.`,
-              example: `The ${word} was used in a sentence.`,
-            },
-          ],
-        },
-      ],
-    }
-
-    return NextResponse.json(genericDefinition)
   } catch (error) {
+    console.error("Error fetching definition:", error)
     return NextResponse.json({ error: "Failed to fetch definition" }, { status: 500 })
   }
 }
