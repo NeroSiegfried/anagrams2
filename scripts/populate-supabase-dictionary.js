@@ -4,7 +4,7 @@ require("dotenv").config({ path: ".env.local" })
 const { createClient } = require("@supabase/supabase-js")
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_SUPABASE_URL
+const supabaseUrl = process.env.SUPABASE_NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl || !supabaseServiceKey) {
@@ -119,10 +119,139 @@ async function populateDictionary() {
 
     console.log(`Processing ${wordMap.size} unique words...`)
 
-    const processed = 0
-    const added = 0
-    const errors = 0
+    let processed = 0
+    let added = 0
+    let errors = 0
     const batchSize = 100
-    const batch = []
+    let batch = []
 
     for (const [word, wordEntries] of wordMap) {
+      try {
+        // Combine all definitions for this word
+        const combinedDefinitions = wordEntries.map((entry) => {
+          const pos = entry.pos || "unknown"
+          const def = entry.def || `Definition for ${word}`
+          return { partOfSpeech: pos, definition: def }
+        })
+
+        // Create a comprehensive definition object
+        const definitionObj = {
+          word: word,
+          phonetic: `/${word}/`,
+          meanings: combinedDefinitions.reduce((acc, curr) => {
+            // Group by part of speech
+            const existing = acc.find((m) => m.partOfSpeech === curr.partOfSpeech)
+            if (existing) {
+              existing.definitions.push({
+                definition: curr.definition,
+                example: curr.definition.includes('"') ? extractExample(curr.definition) : undefined,
+              })
+            } else {
+              acc.push({
+                partOfSpeech: curr.partOfSpeech,
+                definitions: [
+                  {
+                    definition: curr.definition,
+                    example: curr.definition.includes('"') ? extractExample(curr.definition) : undefined,
+                  },
+                ],
+              })
+            }
+            return acc
+          }, []),
+        }
+
+        const definitionJson = JSON.stringify(definitionObj)
+
+        // Determine if this is a common word (simple heuristic)
+        const isCommon = word.length <= 8 && !word.includes("'") && !/[A-Z]/.test(word)
+
+        // Create canonical form for anagram matching
+        const canonicalForm = word.toLowerCase().split("").sort().join("")
+
+        // Add to batch
+        batch.push({
+          word: word.toLowerCase(),
+          length: word.length,
+          is_common: isCommon,
+          definition: definitionJson,
+          canonical_form: canonicalForm,
+        })
+
+        processed++
+
+        // If batch is full, send it to Supabase
+        if (batch.length >= batchSize) {
+          const { data, error } = await supabase.from("words").upsert(batch, { onConflict: "word" })
+
+          if (error) {
+            console.error(`Error inserting batch:`, error)
+            errors += batch.length
+          } else {
+            added += batch.length
+          }
+          batch = [] // clear batch
+
+          if (processed % 1000 === 0) {
+            console.log(`Processed ${processed}/${wordMap.size} words (${added} added, ${errors} errors)`)
+          }
+        }
+      } catch (error) {
+        errors++
+        if (errors <= 10) {
+          // Only log first 10 errors to avoid spam
+          console.error(`Error adding word "${word}":`, error)
+        }
+      }
+
+      // Add a small delay every 100 words to prevent overwhelming the database
+      if (processed % 100 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+
+    // Insert any remaining rows in the final batch
+    if (batch.length > 0) {
+      const { data, error } = await supabase.from("words").upsert(batch, { onConflict: "word" })
+
+      if (error) {
+        console.error("Error inserting final batch:", error)
+        errors += batch.length
+      } else {
+        added += batch.length
+      }
+    }
+
+    console.log(`Dictionary population complete!`)
+    console.log(`Total processed: ${processed}`)
+    console.log(`Successfully added: ${added}`)
+    console.log(`Errors: ${errors}`)
+
+    return {
+      totalProcessed: processed,
+      successfullyAdded: added,
+      errors: errors,
+    }
+  } catch (error) {
+    console.error("Failed to populate dictionary:", error)
+    throw error
+  }
+}
+
+// Check if this script is being run directly
+if (require.main === module) {
+  // Load environment variables if running directly
+  populateDictionary()
+    .then((stats) => {
+      console.log("Dictionary population completed successfully!")
+      console.log("Stats:", stats)
+      process.exit(0)
+    })
+    .catch((error) => {
+      console.error("Dictionary population failed:", error)
+      process.exit(1)
+    })
+} else {
+  // Export for use in API routes
+  module.exports = { populateDictionary }
+}

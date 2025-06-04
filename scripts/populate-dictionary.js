@@ -1,4 +1,5 @@
 // This script needs to be run from the project root with: node scripts/populate-dictionary.js
+require("dotenv").config({ path: ".env.local" })
 const { neon } = require("@neondatabase/serverless")
 
 // Initialize database connection
@@ -239,8 +240,6 @@ async function populateDictionary() {
 // Check if this script is being run directly
 if (require.main === module) {
   // Load environment variables if running directly
-  require("dotenv").config({ path: ".env.local" })
-
   populateDictionary()
     .then((stats) => {
       console.log("Dictionary population completed successfully!")

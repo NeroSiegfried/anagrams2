@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { AlertTriangle, Database, ExternalLink, X, Download, Loader2 } from "lucide-react"
+import { AlertTriangle, Database, ExternalLink, X, Download, Loader2, CheckCircle, Info } from 'lucide-react'
 import { Button } from "@/components/ui/button"
+import { getSupabaseClient } from "@/lib/supabase"
 
 export function DatabaseStatus() {
   const [dbStatus, setDbStatus] = useState<"checking" | "connected" | "error">("checking")
@@ -15,13 +16,24 @@ export function DatabaseStatus() {
   useEffect(() => {
     const checkDatabase = async () => {
       try {
-        const response = await fetch("/api/health")
-        if (response.ok) {
-          setDbStatus("connected")
-        } else {
+        const supabase = getSupabaseClient()
+
+        if (!supabase) {
           setDbStatus("error")
+          return
+        }
+
+        // Try a simple query to test the connection
+        const { data, error } = await supabase.from("words").select("count").limit(1)
+
+        if (error) {
+          console.error("Supabase connection error:", error)
+          setDbStatus("error")
+        } else {
+          setDbStatus("connected")
         }
       } catch (error) {
+        console.error("Database check error:", error)
         setDbStatus("error")
       }
     }
@@ -34,7 +46,7 @@ export function DatabaseStatus() {
     setPopulationStatus("Starting dictionary population...")
 
     try {
-      const response = await fetch("/api/populate-dictionary", {
+      const response = await fetch("/api/populate-supabase-dictionary", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -47,6 +59,8 @@ export function DatabaseStatus() {
         setPopulationStatus(
           `Success! Added ${result.stats.successfullyAdded} words with ${result.stats.errors} errors.`,
         )
+        // Recheck database status
+        setTimeout(() => setDbStatus("connected"), 2000)
       } else {
         setPopulationStatus(`Error: ${result.details || "Failed to populate dictionary"}`)
       }
@@ -57,9 +71,44 @@ export function DatabaseStatus() {
     }
   }
 
-  // Don't show anything if checking, connected, or dismissed
-  if (dbStatus === "checking" || dbStatus === "connected" || dismissed) {
+  // Don't show anything if checking or dismissed
+  if (dbStatus === "checking" || dismissed) {
     return null
+  }
+
+  // Show success message briefly if connected
+  if (dbStatus === "connected") {
+    return (
+      <AnimatePresence>
+        <motion.div
+          className="fixed top-20 left-4 right-4 z-40 mx-auto max-w-md"
+          initial={{ opacity: 0, y: -50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -50 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="game-card border-2 border-green-600 rounded-lg p-4 shadow-lg relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-2 right-2 text-green-300 hover:text-green-100 hover:bg-green-600/20"
+              onClick={() => setDismissed(true)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+
+            <div className="flex items-center mb-2">
+              <CheckCircle className="h-5 w-5 text-green-300 mr-2" />
+              <h3 className="text-lg font-semibold text-green-100">Supabase Connected</h3>
+            </div>
+
+            <p className="text-green-200 text-sm">
+              Database is online! All features including multiplayer, user accounts, and leaderboards are available.
+            </p>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    )
   }
 
   return (
@@ -83,18 +132,17 @@ export function DatabaseStatus() {
 
           <div className="flex items-center mb-3">
             <AlertTriangle className="h-5 w-5 text-amber-300 mr-2" />
-            <h3 className="text-lg font-semibold text-amber-100">Offline Mode</h3>
+            <h3 className="text-lg font-semibold text-amber-100">Supabase Setup Required</h3>
           </div>
 
           <p className="text-amber-200 text-sm mb-3">
-            Running without database. User accounts and score saving are disabled, but you can still play!
+            Supabase is not configured. Multiplayer, user accounts, and enhanced features are disabled.
           </p>
 
           <div className="flex items-center space-x-2 mb-3">
             <Button
-              variant="outline"
+              className="wood-button text-amber-900 font-semibold"
               size="sm"
-              className="border-amber-600 text-amber-100 hover:bg-amber-600 hover:text-amber-900"
               onClick={() => setShowDetails(!showDetails)}
             >
               <Database className="h-4 w-4 mr-1" />
@@ -105,26 +153,37 @@ export function DatabaseStatus() {
           <AnimatePresence>
             {showDetails && (
               <motion.div
-                className="mt-3 p-3 bg-amber-900/20 rounded border border-amber-600"
+                className="mt-3 p-3 score-card rounded border border-amber-600"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <p className="text-amber-200 text-xs mb-2">To enable full functionality:</p>
-                <ol className="text-amber-200 text-xs space-y-1 list-decimal list-inside mb-3">
-                  <li>Get a free Neon database</li>
-                  <li>Add DATABASE_URL environment variable</li>
-                  <li>Run the table creation script</li>
-                  <li>Populate the dictionary</li>
-                  <li>Restart the application</li>
-                </ol>
+                <div className="flex items-start mb-2">
+                  <Info className="h-4 w-4 text-amber-300 mr-2 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-amber-200 text-xs mb-2">Required environment variables:</p>
+                    <ul className="text-amber-200 text-xs space-y-1 mb-3 font-mono">
+                      <li>• NEXT_PUBLIC_SUPABASE_URL</li>
+                      <li>• NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
+                      <li>• SUPABASE_SUPABASE_SERVICE_ROLE_KEY (for admin)</li>
+                    </ul>
+                    <p className="text-amber-200 text-xs mb-2">Setup steps:</p>
+                    <ol className="text-amber-200 text-xs space-y-1 list-decimal list-inside mb-3">
+                      <li>Create a free Supabase project at supabase.com</li>
+                      <li>Add the environment variables above to your project</li>
+                      <li>Add the environment variables to your project</li>
+                      <li>Enable authentication in your Supabase project</li>
+                      <li>Run the SQL setup script in Supabase SQL editor</li>
+                      <li>Populate the dictionary using the button below.</li>
+                    </ol>
+                  </div>
+                </div>
 
                 <div className="space-y-2">
                   <Button
-                    variant="outline"
+                    className="w-full wood-button text-amber-900 font-semibold"
                     size="sm"
-                    className="w-full border-amber-600 text-amber-100 hover:bg-amber-600 hover:text-amber-900"
                     onClick={handlePopulateDictionary}
                     disabled={isPopulating}
                   >
@@ -142,17 +201,17 @@ export function DatabaseStatus() {
                   </Button>
 
                   {populationStatus && (
-                    <p className="text-xs text-amber-200 bg-amber-900/30 p-2 rounded">{populationStatus}</p>
+                    <p className="text-xs text-amber-200 score-card p-2 rounded">{populationStatus}</p>
                   )}
                 </div>
 
                 <a
-                  href="https://neon.tech"
+                  href="https://supabase.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center text-amber-300 hover:text-amber-100 text-xs mt-2"
                 >
-                  Get Free Database <ExternalLink className="h-3 w-3 ml-1" />
+                  Get Free Supabase Project <ExternalLink className="h-3 w-3 ml-1" />
                 </a>
               </motion.div>
             )}

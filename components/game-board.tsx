@@ -48,64 +48,13 @@ export function GameBoard({
   const [showSparkles, setShowSparkles] = useState(false)
 
   const audioGeneratorRef = useRef<AudioGenerator | null>(null)
-  const correctSoundRef = useRef<AudioBuffer | null>(null)
-  const incorrectSoundRef = useRef<AudioBuffer | null>(null)
-  const bonusSoundRef = useRef<AudioBuffer | null>(null)
-  const backgroundMusicRef = useRef<AudioBuffer | null>(null)
-  const backgroundSourceRef = useRef<AudioBufferSourceNode | null>(null)
 
   const { opponents, sendWordToServer, opponentScores } = useMultiplayer(gameId, multiplayer)
 
-  // Initialize audio generator and sounds
+  // Initialize audio generator
   useEffect(() => {
     if (typeof window !== "undefined") {
-      try {
-        audioGeneratorRef.current = new AudioGenerator()
-
-        // Generate sound buffers
-        correctSoundRef.current = audioGeneratorRef.current.generateCorrectSound()
-        incorrectSoundRef.current = audioGeneratorRef.current.generateIncorrectSound()
-        bonusSoundRef.current = audioGeneratorRef.current.generateBonusSound()
-        backgroundMusicRef.current = audioGeneratorRef.current.generateBackgroundMusic()
-
-        // Start background music if enabled
-        if (!isMuted && gameSettings.musicEnabled && backgroundMusicRef.current && audioGeneratorRef.current) {
-          const playBackgroundMusic = () => {
-            if (backgroundSourceRef.current) {
-              backgroundSourceRef.current.stop()
-            }
-
-            const audioContext = (audioGeneratorRef.current as any).audioContext
-            if (audioContext && backgroundMusicRef.current) {
-              backgroundSourceRef.current = audioContext.createBufferSource()
-              const gainNode = audioContext.createGain()
-
-              backgroundSourceRef.current.buffer = backgroundMusicRef.current
-              backgroundSourceRef.current.loop = true
-              gainNode.gain.value = 0.1
-
-              backgroundSourceRef.current.connect(gainNode)
-              gainNode.connect(audioContext.destination)
-
-              backgroundSourceRef.current.start()
-            }
-          }
-
-          playBackgroundMusic()
-        }
-      } catch (error) {
-        console.warn("Audio initialization failed:", error)
-      }
-    }
-
-    return () => {
-      if (backgroundSourceRef.current) {
-        try {
-          backgroundSourceRef.current.stop()
-        } catch (error) {
-          console.warn("Error stopping background music:", error)
-        }
-      }
+      audioGeneratorRef.current = new AudioGenerator()
     }
   }, [])
 
@@ -169,9 +118,23 @@ export function GameBoard({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [gameState.isActive, gameState.timeLeft, gameState.letters, selectedIndices, currentWord, showSettings])
 
-  const playSound = (soundBuffer: AudioBuffer | null) => {
-    if (!isMuted && gameSettings.soundEnabled && audioGeneratorRef.current && soundBuffer) {
-      audioGeneratorRef.current.playBuffer(soundBuffer, 0.3)
+  const playSound = async (soundType: "correct" | "incorrect" | "bonus") => {
+    if (isMuted || !gameSettings.soundEnabled || !audioGeneratorRef.current) return
+
+    try {
+      switch (soundType) {
+        case "correct":
+          await audioGeneratorRef.current.playCorrectSound()
+          break
+        case "incorrect":
+          await audioGeneratorRef.current.playIncorrectSound()
+          break
+        case "bonus":
+          await audioGeneratorRef.current.playBonusSound()
+          break
+      }
+    } catch (error) {
+      // Silently fail for audio errors
     }
   }
 
@@ -216,7 +179,7 @@ export function GameBoard({
         variant: "destructive",
       })
       setFeedbackState("incorrect")
-      playSound(incorrectSoundRef.current)
+      playSound("incorrect")
       setTimeout(() => setFeedbackState("idle"), 500)
       return
     }
@@ -228,7 +191,7 @@ export function GameBoard({
         variant: "destructive",
       })
       setFeedbackState("incorrect")
-      playSound(incorrectSoundRef.current)
+      playSound("incorrect")
       setTimeout(() => setFeedbackState("idle"), 500)
       return
     }
@@ -250,11 +213,11 @@ export function GameBoard({
       if (word.length >= 6) {
         setFeedbackState("bonus")
         setShowSparkles(true)
-        playSound(bonusSoundRef.current)
+        playSound("bonus")
         setTimeout(() => setShowSparkles(false), 1000)
       } else {
         setFeedbackState("correct")
-        playSound(correctSoundRef.current)
+        playSound("correct")
       }
 
       toast({
@@ -264,7 +227,7 @@ export function GameBoard({
       })
     } else {
       setFeedbackState("incorrect")
-      playSound(incorrectSoundRef.current)
+      playSound("incorrect")
 
       toast({
         title: "Invalid word",

@@ -1,7 +1,7 @@
--- Create the pgvector extension if it doesn't exist
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Create users table
+-- Create users table (for non-Supabase setups)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   username VARCHAR(255) UNIQUE NOT NULL,
@@ -72,15 +72,6 @@ CREATE TABLE IF NOT EXISTS words (
   canonical_form TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
-
--- Add canonical_form column if it doesn't exist
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                   WHERE table_name = 'words' AND column_name = 'canonical_form') THEN
-        ALTER TABLE words ADD COLUMN canonical_form TEXT;
-    END IF;
-END $$;
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_words_word ON words(word);

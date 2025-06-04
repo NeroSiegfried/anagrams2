@@ -526,287 +526,6 @@ const FALLBACK_WORDS = [
   "inner",
   "input",
   "issue",
-  "japan",
-  "jimmy",
-  "joint",
-  "jones",
-  "judge",
-  "known",
-  "label",
-  "large",
-  "laser",
-  "later",
-  "layer",
-  "learn",
-  "lease",
-  "least",
-  "leave",
-  "legal",
-  "level",
-  "lewis",
-  "limit",
-  "links",
-  "lives",
-  "local",
-  "loose",
-  "lower",
-  "lucky",
-  "lunch",
-  "lying",
-  "magic",
-  "major",
-  "maker",
-  "march",
-  "maria",
-  "match",
-  "maybe",
-  "mayor",
-  "meant",
-  "media",
-  "metal",
-  "minor",
-  "minus",
-  "mixed",
-  "model",
-  "money",
-  "month",
-  "moral",
-  "motor",
-  "mount",
-  "mouse",
-  "mouth",
-  "moved",
-  "movie",
-  "needs",
-  "never",
-  "newly",
-  "noise",
-  "north",
-  "noted",
-  "novel",
-  "nurse",
-  "occur",
-  "ocean",
-  "offer",
-  "often",
-  "order",
-  "other",
-  "ought",
-  "paint",
-  "panel",
-  "paper",
-  "party",
-  "peace",
-  "peter",
-  "phase",
-  "phone",
-  "photo",
-  "piano",
-  "piece",
-  "pilot",
-  "pitch",
-  "plain",
-  "plane",
-  "plant",
-  "plate",
-  "point",
-  "pound",
-  "power",
-  "press",
-  "price",
-  "pride",
-  "prime",
-  "print",
-  "prior",
-  "prize",
-  "proof",
-  "proud",
-  "prove",
-  "queen",
-  "quick",
-  "quiet",
-  "quite",
-  "radio",
-  "raise",
-  "range",
-  "rapid",
-  "ratio",
-  "reach",
-  "ready",
-  "realm",
-  "rebel",
-  "refer",
-  "relax",
-  "repay",
-  "reply",
-  "rigid",
-  "rival",
-  "river",
-  "robin",
-  "roger",
-  "roman",
-  "rough",
-  "round",
-  "route",
-  "royal",
-  "rural",
-  "scale",
-  "scene",
-  "scope",
-  "score",
-  "sense",
-  "serve",
-  "seven",
-  "shall",
-  "shape",
-  "share",
-  "sharp",
-  "sheet",
-  "shelf",
-  "shell",
-  "shift",
-  "shine",
-  "shirt",
-  "shock",
-  "shoot",
-  "short",
-  "shown",
-  "sides",
-  "silly",
-  "since",
-  "sixth",
-  "sixty",
-  "sized",
-  "skill",
-  "sleep",
-  "slide",
-  "small",
-  "smart",
-  "smoke",
-  "snake",
-  "solid",
-  "solve",
-  "sorry",
-  "south",
-  "spare",
-  "speak",
-  "speed",
-  "spend",
-  "spent",
-  "split",
-  "spoke",
-  "sport",
-  "staff",
-  "stage",
-  "stake",
-  "stand",
-  "start",
-  "state",
-  "stays",
-  "steel",
-  "steep",
-  "steer",
-  "steve",
-  "stick",
-  "still",
-  "stock",
-  "stone",
-  "stood",
-  "store",
-  "storm",
-  "story",
-  "strip",
-  "stuck",
-  "study",
-  "stuff",
-  "style",
-  "sugar",
-  "suite",
-  "super",
-  "sweet",
-  "swift",
-  "swing",
-  "swiss",
-  "table",
-  "taken",
-  "taste",
-  "taxes",
-  "teach",
-  "teeth",
-  "terry",
-  "texas",
-  "thank",
-  "theft",
-  "their",
-  "theme",
-  "thick",
-  "thing",
-  "think",
-  "third",
-  "threw",
-  "throw",
-  "thumb",
-  "tiger",
-  "timer",
-  "tired",
-  "title",
-  "today",
-  "token",
-  "topic",
-  "total",
-  "touch",
-  "tough",
-  "tower",
-  "track",
-  "trade",
-  "train",
-  "treat",
-  "trend",
-  "trial",
-  "tribe",
-  "trick",
-  "tried",
-  "tries",
-  "truck",
-  "truly",
-  "trunk",
-  "trust",
-  "truth",
-  "twice",
-  "twist",
-  "tyler",
-  "ultra",
-  "uncle",
-  "under",
-  "undue",
-  "union",
-  "unity",
-  "until",
-  "upper",
-  "upset",
-  "urban",
-  "usage",
-  "usual",
-  "valid",
-  "value",
-  "video",
-  "virus",
-  "visit",
-  "vital",
-  "vocal",
-  "voice",
-  "waste",
-  "watch",
-  "wheel",
-  "which",
-  "woman",
-  "women",
-  "worry",
-  "worse",
-  "worst",
-  "worth",
-  "write",
-  "youth",
 
   // 6-letter words
   "anagram",
@@ -1337,53 +1056,60 @@ const FALLBACK_WORDS = [
 ]
 
 export async function validateWord(word: string): Promise<boolean> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    // Fallback to basic word validation when Supabase is not available
-    return FALLBACK_WORDS.includes(word.toLowerCase())
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      // Fallback to basic word validation when Supabase is not available
+      return FALLBACK_WORDS.includes(word.toLowerCase())
+    }
+
     const { data, error } = await supabase.from("words").select("id").eq("word", word.toLowerCase()).limit(1).single()
 
-    if (error) throw error
+    if (error) {
+      // If there's an error, fall back to offline validation
+      console.warn("Supabase word validation failed, using offline fallback:", error.message)
+      return FALLBACK_WORDS.includes(word.toLowerCase())
+    }
 
     return !!data
   } catch (error: any) {
-    console.error("Error validating word:", error)
+    console.warn("Error validating word, using offline fallback:", error)
     // Fallback to offline validation
     return FALLBACK_WORDS.includes(word.toLowerCase())
   }
 }
 
 export async function getWordDefinition(word: string): Promise<string | null> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return null
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      return null
+    }
+
     const { data, error } = await supabase.from("words").select("definition").eq("word", word.toLowerCase()).single()
 
-    if (error) throw error
+    if (error) {
+      console.warn("Error fetching definition:", error.message)
+      return null
+    }
 
     return data?.definition || null
   } catch (error: any) {
-    console.error("Error fetching definition:", error)
+    console.warn("Error fetching definition:", error)
     return null
   }
 }
 
 export async function findValidSubwords(letters: string, minLength = 3): Promise<Word[]> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return generateFallbackSubwords(letters, minLength)
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      return generateFallbackSubwords(letters, minLength)
+    }
+
     // Count the occurrences of each letter
     const letterCounts: Record<string, number> = {}
     for (const char of letters.toLowerCase()) {
@@ -1400,7 +1126,10 @@ export async function findValidSubwords(letters: string, minLength = 3): Promise
       .order("is_common", { ascending: false })
       .limit(1000)
 
-    if (error) throw error
+    if (error) {
+      console.warn("Error finding subwords, using fallback:", error.message)
+      return generateFallbackSubwords(letters, minLength)
+    }
 
     // Filter to only include valid subwords
     const validSubwords = (data || []).filter((row: Word) => {
@@ -1417,7 +1146,7 @@ export async function findValidSubwords(letters: string, minLength = 3): Promise
 
     return validSubwords
   } catch (error: any) {
-    console.error("Error finding subwords:", error)
+    console.warn("Error finding subwords:", error)
     return generateFallbackSubwords(letters, minLength)
   }
 }
@@ -1452,13 +1181,13 @@ function generateFallbackSubwords(letters: string, minLength = 3): Word[] {
 }
 
 export async function findAnagrams(word: string): Promise<Word[]> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return []
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      return []
+    }
+
     // Sort the letters to create a canonical form
     const canonicalForm = word.toLowerCase().split("").sort().join("")
 
@@ -1470,11 +1199,14 @@ export async function findAnagrams(word: string): Promise<Word[]> {
       .neq("word", word.toLowerCase())
       .limit(100)
 
-    if (error) throw error
+    if (error) {
+      console.warn("Error finding anagrams:", error.message)
+      return []
+    }
 
     return data || []
   } catch (error: any) {
-    console.error("Error finding anagrams:", error)
+    console.warn("Error finding anagrams:", error)
     return []
   }
 }
@@ -1518,22 +1250,22 @@ export async function addWord(word: string, isCommon = false, definition: string
 }
 
 export async function getWordsByLength(length: number, limit = 100): Promise<Word[]> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return FALLBACK_WORDS.filter((word) => word.length === length)
-      .slice(0, limit)
-      .map((word) => ({
-        id: word,
-        word,
-        length: word.length,
-        is_common: true,
-        definition: null,
-        created_at: new Date().toISOString(),
-      }))
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      return FALLBACK_WORDS.filter((word) => word.length === length)
+        .slice(0, limit)
+        .map((word) => ({
+          id: word,
+          word,
+          length: word.length,
+          is_common: true,
+          definition: null,
+          created_at: new Date().toISOString(),
+        }))
+    }
+
     const { data, error } = await supabase
       .from("words")
       .select("*")
@@ -1541,11 +1273,23 @@ export async function getWordsByLength(length: number, limit = 100): Promise<Wor
       .order("is_common", { ascending: false })
       .limit(limit)
 
-    if (error) throw error
+    if (error) {
+      console.warn("Error fetching words by length:", error.message)
+      return FALLBACK_WORDS.filter((word) => word.length === length)
+        .slice(0, limit)
+        .map((word) => ({
+          id: word,
+          word,
+          length: word.length,
+          is_common: true,
+          definition: null,
+          created_at: new Date().toISOString(),
+        }))
+    }
 
     return data || []
   } catch (error: any) {
-    console.error("Error fetching words by length:", error)
+    console.warn("Error fetching words by length:", error)
     return FALLBACK_WORDS.filter((word) => word.length === length)
       .slice(0, limit)
       .map((word) => ({
@@ -1560,22 +1304,22 @@ export async function getWordsByLength(length: number, limit = 100): Promise<Wor
 }
 
 export async function getCommonWordsByLength(length: number, limit = 20): Promise<Word[]> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return FALLBACK_WORDS.filter((word) => word.length === length)
-      .slice(0, limit)
-      .map((word) => ({
-        id: word,
-        word,
-        length: word.length,
-        is_common: true,
-        definition: null,
-        created_at: new Date().toISOString(),
-      }))
-  }
-
   try {
+    const supabase = getSupabaseClient()
+
+    if (!supabase) {
+      return FALLBACK_WORDS.filter((word) => word.length === length)
+        .slice(0, limit)
+        .map((word) => ({
+          id: word,
+          word,
+          length: word.length,
+          is_common: true,
+          definition: null,
+          created_at: new Date().toISOString(),
+        }))
+    }
+
     const { data, error } = await supabase
       .from("words")
       .select("*")
@@ -1584,11 +1328,23 @@ export async function getCommonWordsByLength(length: number, limit = 20): Promis
       .order("created_at", { ascending: false })
       .limit(limit)
 
-    if (error) throw error
+    if (error) {
+      console.warn("Error fetching common words by length:", error.message)
+      return FALLBACK_WORDS.filter((word) => word.length === length)
+        .slice(0, limit)
+        .map((word) => ({
+          id: word,
+          word,
+          length: word.length,
+          is_common: true,
+          definition: null,
+          created_at: new Date().toISOString(),
+        }))
+    }
 
     return data || []
   } catch (error: any) {
-    console.error("Error fetching common words by length:", error)
+    console.warn("Error fetching common words by length:", error)
     return FALLBACK_WORDS.filter((word) => word.length === length)
       .slice(0, limit)
       .map((word) => ({

@@ -1,108 +1,72 @@
 // Generate dummy audio files using Web Audio API
 export class AudioGenerator {
   private audioContext: AudioContext | null = null
+  private isInitialized = false
 
   constructor() {
-    if (typeof window !== "undefined") {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-    }
+    // Don't initialize immediately to avoid issues
   }
 
-  private createTone(frequency: number, duration: number, type: OscillatorType = "sine"): AudioBuffer | null {
-    if (!this.audioContext) return null
+  private async initializeAudio() {
+    if (this.isInitialized || typeof window === "undefined") return
 
-    const sampleRate = this.audioContext.sampleRate
-    const numSamples = duration * sampleRate
-    const buffer = this.audioContext.createBuffer(1, numSamples, sampleRate)
-    const channelData = buffer.getChannelData(0)
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
 
-    for (let i = 0; i < numSamples; i++) {
-      const t = i / sampleRate
-      let sample = 0
-
-      switch (type) {
-        case "sine":
-          sample = Math.sin(2 * Math.PI * frequency * t)
-          break
-        case "square":
-          sample = Math.sin(2 * Math.PI * frequency * t) > 0 ? 1 : -1
-          break
-        case "triangle":
-          sample = (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * frequency * t))
-          break
-        case "sawtooth":
-          sample = 2 * (t * frequency - Math.floor(t * frequency + 0.5))
-          break
+      // Resume audio context if it's suspended (required by some browsers)
+      if (this.audioContext.state === "suspended") {
+        await this.audioContext.resume()
       }
 
-      // Apply envelope (fade in/out)
-      const envelope = Math.min(t * 10, (duration - t) * 10, 1)
-      channelData[i] = sample * envelope * 0.3 // Reduce volume
+      this.isInitialized = true
+    } catch (error) {
+      console.warn("Audio initialization failed:", error)
+      this.audioContext = null
+      this.isInitialized = false
     }
-
-    return buffer
   }
 
-  generateCorrectSound(): AudioBuffer | null {
-    // Pleasant ascending chord
-    return this.createTone(523.25, 0.3, "sine") // C5
-  }
+  // Simple beep sound without external files
+  async playSimpleBeep(frequency = 440, duration = 0.2, volume = 0.3) {
+    try {
+      await this.initializeAudio()
 
-  generateIncorrectSound(): AudioBuffer | null {
-    // Lower, more dissonant tone
-    return this.createTone(220, 0.5, "square") // A3
-  }
+      if (!this.audioContext) return
 
-  generateBonusSound(): AudioBuffer | null {
-    // Higher, more exciting tone
-    return this.createTone(783.99, 0.6, "triangle") // G5
-  }
+      if (this.audioContext.state === "suspended") {
+        await this.audioContext.resume()
+      }
 
-  playBuffer(buffer: AudioBuffer | null, volume = 0.3) {
-    if (!this.audioContext || !buffer) return
+      const oscillator = this.audioContext.createOscillator()
+      const gainNode = this.audioContext.createGain()
 
-    const source = this.audioContext.createBufferSource()
-    const gainNode = this.audioContext.createGain()
+      oscillator.connect(gainNode)
+      gainNode.connect(this.audioContext.destination)
 
-    source.buffer = buffer
-    gainNode.gain.value = volume
+      oscillator.frequency.value = frequency
+      oscillator.type = "sine"
 
-    source.connect(gainNode)
-    gainNode.connect(this.audioContext.destination)
+      gainNode.gain.setValueAtTime(0, this.audioContext.currentTime)
+      gainNode.gain.linearRampToValueAtTime(volume, this.audioContext.currentTime + 0.01)
+      gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + duration)
 
-    source.start()
-  }
-
-  generateBackgroundMusic(): AudioBuffer | null {
-    if (!this.audioContext) return null
-
-    const duration = 10 // 10 seconds loop
-    const sampleRate = this.audioContext.sampleRate
-    const numSamples = duration * sampleRate
-    const buffer = this.audioContext.createBuffer(1, numSamples, sampleRate)
-    const channelData = buffer.getChannelData(0)
-
-    // Simple ambient background music
-    const frequencies = [261.63, 329.63, 392.0, 523.25] // C major chord
-
-    for (let i = 0; i < numSamples; i++) {
-      const t = i / sampleRate
-      let sample = 0
-
-      // Layer multiple sine waves for a richer sound
-      frequencies.forEach((freq, index) => {
-        const phase = (index + 1) * 0.1
-        sample += Math.sin(2 * Math.PI * freq * t + phase) * (0.1 / frequencies.length)
-      })
-
-      // Add some gentle modulation
-      sample *= 1 + 0.2 * Math.sin(2 * Math.PI * 0.5 * t)
-
-      // Apply gentle envelope
-      const envelope = 0.5 + 0.5 * Math.sin((2 * Math.PI * t) / duration)
-      channelData[i] = sample * envelope * 0.1 // Very quiet background
+      oscillator.start(this.audioContext.currentTime)
+      oscillator.stop(this.audioContext.currentTime + duration)
+    } catch (error) {
+      // Silently fail - don't log audio errors to avoid spam
     }
+  }
 
-    return buffer
+  // Play different types of sounds
+  async playCorrectSound() {
+    await this.playSimpleBeep(523.25, 0.3, 0.3) // C5
+  }
+
+  async playIncorrectSound() {
+    await this.playSimpleBeep(220, 0.5, 0.3) // A3
+  }
+
+  async playBonusSound() {
+    await this.playSimpleBeep(783.99, 0.6, 0.3) // G5
   }
 }

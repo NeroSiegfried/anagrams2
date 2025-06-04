@@ -125,7 +125,7 @@ export function LandingPage() {
               <p className="text-amber-200 mb-6">Compete against friends or random players in real-time matches.</p>
               <Link href="/play/multiplayer">
                 <Button className="w-full wood-button text-amber-900 font-semibold py-3" disabled={dbError}>
-                  {dbError ? "Requires Database" : "Find Match"}
+                  {dbError ? "Requires Supabase" : "Find Match"}
                 </Button>
               </Link>
             </motion.div>
@@ -157,7 +157,8 @@ export function LandingPage() {
               <div className="flex items-center justify-center space-x-4">
                 <Trophy className="text-amber-300" />
                 <p className="text-amber-100 text-lg">
-                  Welcome back, <span className="font-bold text-amber-300">{user.username}</span>!
+                  Welcome back,{" "}
+                  <span className="font-bold text-amber-300">{user.user_metadata?.username || user.email}</span>!
                 </p>
                 <Link href="/profile">
                   <Button
@@ -171,7 +172,7 @@ export function LandingPage() {
             ) : (
               <p className="text-amber-200">
                 {dbError ? (
-                  "Database offline - playing as guest"
+                  "Supabase offline - playing as guest"
                 ) : (
                   <>
                     Optional:{" "}
@@ -201,7 +202,7 @@ export function LandingPage() {
             animate={{ opacity: 1 }}
             transition={{ delay: 2.2, duration: 0.5 }}
           >
-            Built with Next.js 14 and Tailwind CSS
+            Built with Next.js 14, Supabase, and Tailwind CSS
           </motion.div>
         </div>
 

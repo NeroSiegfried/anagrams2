@@ -24,13 +24,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [dbError, setDbError] = useState(false)
   const { toast } = useToast()
-  const supabase = getSupabaseClient()
 
   // Load user from Supabase session on initial render
   useEffect(() => {
     const loadUser = async () => {
       try {
+        const supabase = getSupabaseClient()
+
         if (!supabase) {
+          console.log("Supabase not configured - running in offline mode")
           setDbError(true)
           setLoading(false)
           return
@@ -53,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Set up auth state change listener
         const {
           data: { subscription },
-        } = await supabase.auth.onAuthStateChange((_event, newSession) => {
+        } = supabase.auth.onAuthStateChange((_event, newSession) => {
           setSession(newSession)
           setUser(newSession?.user ?? null)
         })
@@ -79,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true)
 
+      const supabase = getSupabaseClient()
       if (!supabase) {
         throw new Error("Supabase client not available")
       }
@@ -117,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true)
 
+      const supabase = getSupabaseClient()
       if (!supabase) {
         throw new Error("Supabase client not available")
       }
@@ -140,11 +144,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user)
       setDbError(false)
 
-      // Update profile with username
-      if (data.user) {
-        await updateProfile(username)
-      }
-
       toast({
         title: "Account created",
         description: "Welcome to Anagrams!",
@@ -164,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async (): Promise<void> => {
     try {
+      const supabase = getSupabaseClient()
       if (!supabase) {
         throw new Error("Supabase client not available")
       }
@@ -188,14 +188,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = async (username: string): Promise<void> => {
     try {
+      const supabase = getSupabaseClient()
       if (!supabase || !user) {
         throw new Error("Supabase client or user not available")
       }
 
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        username,
-        updated_at: new Date().toISOString(),
+      const { error } = await supabase.auth.updateUser({
+        data: { username },
       })
 
       if (error) throw error

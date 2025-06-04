@@ -1,7 +1,7 @@
--- Create tables for Supabase
+-- Create tables for Supabase (updated to handle missing auth schema)
 
--- Create users table (will be managed by Supabase Auth)
--- We'll create a trigger to sync with auth.users
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Create games table
 CREATE TABLE IF NOT EXISTS public.games (
@@ -17,22 +17,22 @@ CREATE TABLE IF NOT EXISTS public.games (
   game_code TEXT UNIQUE
 );
 
--- Create game_participants table
+-- Create game_participants table (without auth.users reference initially)
 CREATE TABLE IF NOT EXISTS public.game_participants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID REFERENCES public.games(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_id UUID, -- Will add foreign key constraint later if auth schema exists
   username TEXT NOT NULL,
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   left_at TIMESTAMP WITH TIME ZONE,
   is_guest BOOLEAN DEFAULT false
 );
 
--- Create scores table
+-- Create scores table (without auth.users reference initially)
 CREATE TABLE IF NOT EXISTS public.scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID REFERENCES public.games(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_id UUID, -- Will add foreign key constraint later if auth schema exists
   username TEXT NOT NULL,
   score INTEGER NOT NULL,
   words_found INTEGER NOT NULL,
@@ -41,10 +41,10 @@ CREATE TABLE IF NOT EXISTS public.scores (
   is_guest BOOLEAN DEFAULT false
 );
 
--- Create leaderboards table
+-- Create leaderboards table (without auth.users reference initially)
 CREATE TABLE IF NOT EXISTS public.leaderboards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID, -- Will add foreign key constraint later if auth schema exists
   username TEXT NOT NULL,
   best_score INTEGER NOT NULL,
   total_games INTEGER DEFAULT 1,
@@ -98,10 +98,6 @@ CREATE POLICY "Users can join games"
 ON public.game_participants FOR INSERT 
 WITH CHECK (true);
 
-CREATE POLICY "Users can update their own participation" 
-ON public.game_participants FOR UPDATE 
-USING (auth.uid() = user_id OR user_id IS NULL);
-
 -- Scores policies
 CREATE POLICY "Scores are viewable by everyone" 
 ON public.scores FOR SELECT 
@@ -120,6 +116,50 @@ USING (true);
 CREATE POLICY "Words are viewable by everyone" 
 ON public.words FOR SELECT 
 USING (true);
+
+-- Function to add foreign key constraints when auth schema becomes available
+CREATE OR REPLACE FUNCTION add_auth_foreign_keys()
+RETURNS void AS $$
+BEGIN
+  -- Check if auth.users table exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'auth' AND table_name = 'users'
+  ) THEN
+    -- Add foreign key constraints to auth.users
+    BEGIN
+      ALTER TABLE public.game_participants 
+      ADD CONSTRAINT fk_game_participants_user_id 
+      FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_object THEN
+      -- Constraint already exists, ignore
+    END;
+    
+    BEGIN
+      ALTER TABLE public.scores 
+      ADD CONSTRAINT fk_scores_user_id 
+      FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_object THEN
+      -- Constraint already exists, ignore
+    END;
+    
+    BEGIN
+      ALTER TABLE public.leaderboards 
+      ADD CONSTRAINT fk_leaderboards_user_id 
+      FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN
+      -- Constraint already exists, ignore
+    END;
+    
+    RAISE NOTICE 'Foreign key constraints to auth.users have been added successfully.';
+  ELSE
+    RAISE NOTICE 'auth.users table does not exist yet. Foreign key constraints will be added later.';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Try to add foreign key constraints (will succeed if auth schema exists)
+SELECT add_auth_foreign_keys();
 
 -- Create function to update leaderboard on score submission
 CREATE OR REPLACE FUNCTION update_leaderboard()

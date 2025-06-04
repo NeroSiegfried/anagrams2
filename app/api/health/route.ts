@@ -1,29 +1,40 @@
 import { NextResponse } from "next/server"
-import { getDatabaseStatus } from "@/lib/db"
+import { getSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const { available, error } = getDatabaseStatus()
+    const supabase = getSupabaseClient()
 
-    if (!available) {
+    if (!supabase) {
       return NextResponse.json(
         {
           status: "offline",
           database: "not_available",
-          message: error || "Database not configured",
+          message: "Supabase client not configured",
         },
         { status: 503 },
       )
     }
 
-    // Try a simple query to verify connection using the correct Neon syntax
-    const { query } = await import("@/lib/db")
-    await query("SELECT 1")
+    // Try a simple query to verify connection
+    const { data, error } = await supabase.from("words").select("count").limit(1)
+
+    if (error) {
+      return NextResponse.json(
+        {
+          status: "error",
+          database: "connection_failed",
+          message: "Supabase connection failed",
+          error: error.message,
+        },
+        { status: 503 },
+      )
+    }
 
     return NextResponse.json({
       status: "ok",
       database: "connected",
-      message: "Database is available and responding",
+      message: "Supabase is available and responding",
     })
   } catch (error: any) {
     console.error("Database health check failed:", error)
@@ -33,6 +44,7 @@ export async function GET() {
         status: "error",
         database: "connection_failed",
         message: "Database connection failed",
+        error: error.message,
       },
       { status: 503 },
     )
