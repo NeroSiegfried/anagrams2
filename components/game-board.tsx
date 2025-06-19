@@ -15,6 +15,7 @@ import { SettingsModal } from "@/components/settings-modal"
 import { useMultiplayer } from "@/lib/use-multiplayer"
 import { Navbar } from "@/components/navbar"
 import { AudioGenerator } from "@/lib/audio-generator"
+import { useRouter } from "next/navigation"
 
 export function GameBoard({
   gameId,
@@ -23,6 +24,7 @@ export function GameBoard({
   gameId?: string
   multiplayer?: boolean
 }) {
+  console.log('[GameBoard] Component rendered');
   const { toast } = useToast()
   const { user } = useAuth()
   const {
@@ -46,10 +48,28 @@ export function GameBoard({
   const [showSettings, setShowSettings] = useState(false)
   const [feedbackState, setFeedbackState] = useState<"idle" | "correct" | "incorrect" | "bonus">("idle")
   const [showSparkles, setShowSparkles] = useState(false)
+  const [scrambledLetters, setScrambledLetters] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [restoring, setRestoring] = useState(false)
+  const [restoringGameOver, setRestoringGameOver] = useState(false)
+  const hasRestoredRef = useRef(false)
+  const hasAutoSubmitted = useRef(false)
 
   const audioGeneratorRef = useRef<AudioGenerator | null>(null)
 
+  // Track if we've already scrambled for the current base word
+  const scrambledForBaseWord = useRef<string | null>(null)
+
+  // Track previous baseWord for logging
+  const prevBaseWordRef = useRef<string | null>(null)
+
   const { opponents, sendWordToServer, opponentScores } = useMultiplayer(gameId, multiplayer)
+
+  const router = useRouter()
+
+  // Add this after currentWord state:
+  const currentWordRef = useRef<string[]>([]);
+  useEffect(() => { currentWordRef.current = currentWord; }, [currentWord]);
 
   // Initialize audio generator
   useEffect(() => {
@@ -58,65 +78,118 @@ export function GameBoard({
     }
   }, [])
 
-  // Always start a new game when component mounts
+  // Deterministic shuffle using a seed (base word)
+  function seededScramble(word: string, seed: number): string[] {
+    const arr = word.split("")
+    let m = arr.length, t, i
+    while (m) {
+      i = Math.floor(random(seed + m) * m--)
+      t = arr[m]
+      arr[m] = arr[i]
+      arr[i] = t
+    }
+    return arr
+  }
+  // Simple hash function for seed
+  function hashCode(str: string): number {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i)
+      hash |= 0
+    }
+    return Math.abs(hash)
+  }
+  // Deterministic random number generator
+  function random(seed: number): number {
+    const x = Math.sin(seed) * 10000
+    return x - Math.floor(x)
+  }
+
+  // On mount, check for saved game over state or return-to-game flag
   useEffect(() => {
-    startNewGame()
-    setCurrentWord([])
-    setSelectedIndices([])
-    setShowGameOver(false)
-  }, []) // Empty dependency array to run only on mount
-
-  // Timer countdown
-  useEffect(() => {
-    if (!gameState.isActive || gameState.timeLeft <= 0) return
-
-    const timer = setInterval(() => {
-      setGameState({ timeLeft: gameState.timeLeft - 1 })
-
-      if (gameState.timeLeft <= 1) {
-        clearInterval(timer)
-        endGame()
-        setShowGameOver(true)
-      }
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [gameState.isActive, gameState.timeLeft, setGameState, endGame])
-
-  // Handle keyboard input
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!gameState.isActive || gameState.timeLeft <= 0 || showSettings) return
-
-      // Letter keys
-      if (/^[a-zA-Z]$/.test(e.key)) {
-        const letterIndex = gameState.letters.findIndex(
-          (l, i) => l.toLowerCase() === e.key.toLowerCase() && !selectedIndices.includes(i),
-        )
-        if (letterIndex !== -1) {
-          addLetterToWord(letterIndex)
+    console.log('[GameBoard] Mount effect running');
+    const saved = localStorage.getItem('anagramsGameOverState');
+    const returnToGame = localStorage.getItem('anagramsReturnToGame');
+    if (!hasRestoredRef.current && saved && returnToGame) {
+      console.log('[GameBoard] Restoring game over state from localStorage');
+      setRestoringGameOver(true);
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.baseWord) {
+          setGameState({
+            isActive: false,
+            letters: parsed.baseWord.split(''),
+            foundWords: parsed.foundWords,
+            score: parsed.score,
+            timeLeft: 0,
+            baseWord: parsed.baseWord,
+            currentRound: 1,
+            gameId: null,
+            currentLetterCount: parsed.baseWord.length,
+          });
+          // Restore scrambled letters
+          const key = `anagramsScrambledLetters_${parsed.baseWord}`;
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            const savedOrder = JSON.parse(stored);
+            if (Array.isArray(savedOrder) && savedOrder.length === parsed.baseWord.length) {
+              setScrambledLetters(savedOrder);
+            }
+          }
         }
-      }
+      } catch {}
+      setShowGameOver(true);
+      localStorage.removeItem('anagramsReturnToGame');
+      setLoading(false);
+      hasRestoredRef.current = true;
+      console.log('[GameBoard] Restoration complete, returning from effect');
+      return; // Prevent starting a new game after restoration
+    }
+    // Only start a new game if not restoring in this session
+    if (!hasRestoredRef.current) {
+      console.log('[GameBoard] No restoration needed, starting new game');
+      localStorage.removeItem('anagramsGameOverState');
+      localStorage.removeItem('anagramsReturnToGame');
+      setLoading(true);
+      Promise.resolve(startNewGame()).then(() => {
+        setCurrentWord([]);
+        setSelectedIndices([]);
+        setShowGameOver(false);
+        setLoading(false);
+        console.log('[GameBoard] New game started');
+      });
+    } else {
+      console.log('[GameBoard] Restoration already performed in this session, skipping new game');
+    }
+  }, []);
 
-      // Backspace
-      else if (e.key === "Backspace") {
-        removeLastLetter()
+  // On new game, shuffle randomly and save to localStorage
+  useEffect(() => {
+    console.log('[Shuffle Effect] Running. Previous baseWord:', prevBaseWordRef.current, 'Current baseWord:', gameState.baseWord);
+    prevBaseWordRef.current = gameState.baseWord;
+    if (gameState.baseWord) {
+      let savedOrder = null
+      try {
+        const key = `anagramsScrambledLetters_${gameState.baseWord}`
+        const stored = localStorage.getItem(key)
+        console.log('[Anagrams] Reading scrambledLetters from localStorage:', key, stored)
+        if (stored) {
+          savedOrder = JSON.parse(stored)
+        }
+      } catch (e) {
+        console.log('[Anagrams] Error reading scrambledLetters from localStorage:', e)
       }
-
-      // Delete/Escape
-      else if (e.key === "Delete" || e.key === "Escape") {
-        clearCurrentWord()
-      }
-
-      // Enter
-      else if (e.key === "Enter") {
-        submitWord()
+      if (savedOrder && Array.isArray(savedOrder) && savedOrder.length === gameState.baseWord.length) {
+        console.log('[Anagrams] Restoring scrambledLetters from localStorage:', savedOrder)
+        setScrambledLetters(savedOrder)
+      } else {
+        const shuffled = scrambleLetters(gameState.baseWord)
+        setScrambledLetters(shuffled)
+        localStorage.setItem(`anagramsScrambledLetters_${gameState.baseWord}`, JSON.stringify(shuffled))
+        console.log('[Anagrams] No saved order, shuffling and saving to localStorage:', shuffled)
       }
     }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [gameState.isActive, gameState.timeLeft, gameState.letters, selectedIndices, currentWord, showSettings])
+  }, [gameState.baseWord])
 
   const playSound = async (soundType: "correct" | "incorrect" | "bonus") => {
     if (isMuted || !gameSettings.soundEnabled || !audioGeneratorRef.current) return
@@ -141,7 +214,7 @@ export function GameBoard({
   const addLetterToWord = (index: number) => {
     if (selectedIndices.includes(index) || currentWord.length >= gameState.currentLetterCount) return
 
-    setCurrentWord((prev) => [...prev, gameState.letters[index]])
+    setCurrentWord((prev) => [...prev, scrambledLetters[index]])
     setSelectedIndices((prev) => [...prev, index])
   }
 
@@ -157,20 +230,22 @@ export function GameBoard({
     setSelectedIndices([])
   }
 
-  const shuffleLetters = () => {
-    const newLetters = [...gameState.letters]
-    for (let i = newLetters.length - 1; i > 0; i--) {
+  // True random shuffle for the shuffle button
+  function scrambleLetters(word: string): string[] {
+    const letters = word.split("")
+    for (let i = letters.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
-      ;[newLetters[i], newLetters[j]] = [newLetters[j], newLetters[i]]
+      ;[letters[i], letters[j]] = [letters[j], letters[i]]
     }
-    setGameState({ letters: newLetters })
-    clearCurrentWord()
+    return letters
   }
 
-  const submitWord = async () => {
-    if (gameState.timeLeft <= 0) return
-
-    const word = currentWord.join("").toLowerCase()
+  const submitWord = async (wordOverride?: string) => {
+    console.log('[submitWord] BEFORE: baseWord =', gameState.baseWord);
+    const word = (wordOverride ?? currentWord.join("")).toLowerCase();
+    console.log('[submitWord] called with:', word, 'isActive:', gameState.isActive, 'timeLeft:', gameState.timeLeft);
+    // Only block if not called from auto-submit
+    if (gameState.timeLeft <= 0 && !wordOverride) return;
 
     if (word.length < 3) {
       toast({
@@ -203,7 +278,7 @@ export function GameBoard({
 
       // Multiplayer: send word to server
       if (multiplayer) {
-        sendWordToServer(word, wordScore)
+        sendWordToServer()
       }
 
       addFoundWord(word)
@@ -238,6 +313,7 @@ export function GameBoard({
 
     setTimeout(() => setFeedbackState("idle"), word.length >= 6 ? 1000 : 500)
     clearCurrentWord()
+    console.log('[submitWord] AFTER: baseWord =', gameState.baseWord);
   }
 
   const handleWordClick = (word: string) => {
@@ -251,10 +327,161 @@ export function GameBoard({
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
+  // Save game over state to localStorage when game ends
+  useEffect(() => {
+    if (showGameOver && gameState.baseWord) {
+      const gameOverState = {
+        score: gameState.score,
+        foundWords: gameState.foundWords,
+        baseWord: gameState.baseWord,
+      }
+      localStorage.setItem('anagramsGameOverState', JSON.stringify(gameOverState))
+    }
+  }, [showGameOver, gameState.score, gameState.foundWords, gameState.baseWord])
+
+  // For GameOverModal, use saved state if present
+  let gameOverScore = gameState.score
+  let gameOverFoundWords = gameState.foundWords
+  let gameOverBaseWord = gameState.baseWord
+  const saved = typeof window !== 'undefined' ? localStorage.getItem('anagramsGameOverState') : null
+  if (showGameOver && saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      gameOverScore = parsed.score
+      gameOverFoundWords = parsed.foundWords
+      gameOverBaseWord = parsed.baseWord
+    } catch {}
+  }
+
+  // Shuffle button handler (true random)
+  const shuffleLetters = () => {
+    if (!gameState.baseWord) return
+    const shuffled = scrambleLetters(gameState.baseWord)
+    setScrambledLetters(shuffled)
+    localStorage.setItem(`anagramsScrambledLetters_${gameState.baseWord}`, JSON.stringify(shuffled))
+    console.log('[Anagrams] User shuffled, saving new order to localStorage:', shuffled)
+    clearCurrentWord()
+  }
+
+  // After every entry, restore the order from localStorage
+  useEffect(() => {
+    if (gameState.baseWord) {
+      try {
+        const key = `anagramsScrambledLetters_${gameState.baseWord}`
+        const stored = localStorage.getItem(key)
+        if (stored) {
+          const savedOrder = JSON.parse(stored)
+          if (Array.isArray(savedOrder) && savedOrder.length === gameState.baseWord.length) {
+            setScrambledLetters(savedOrder)
+          }
+        }
+      } catch {}
+    }
+    // Only runs when baseWord changes
+  }, [gameState.baseWord])
+
+  // When closing the modal or starting a new game, clear the saved state
+  const handleCloseGameOver = () => {
+    console.log('[GameBoard] handleCloseGameOver called, clearing restoringGameOver and hasRestoredRef');
+    localStorage.removeItem('anagramsGameOverState');
+    setShowGameOver(false);
+    setRestoringGameOver(false);
+    hasRestoredRef.current = false;
+    // Navigate to landing page
+    window.location.href = '/';
+  };
+
+  const handlePlayAgain = () => {
+    console.log('[GameBoard] handlePlayAgain called, clearing restoringGameOver and hasRestoredRef, starting new game');
+    setShowGameOver(false);
+    localStorage.removeItem('anagramsGameOverState');
+    setRestoringGameOver(false);
+    hasRestoredRef.current = false;
+    setLoading(true);
+    Promise.resolve(startNewGame()).then(() => {
+      setCurrentWord([]);
+      setSelectedIndices([]);
+      setLoading(false);
+    });
+  };
+
+  // Restore keyboard input effect at the top level:
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!gameState.isActive || gameState.timeLeft <= 0 || showSettings) return;
+      // Letter keys
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        const letterIndex = scrambledLetters.findIndex(
+          (l, i) => l.toLowerCase() === e.key.toLowerCase() && !selectedIndices.includes(i),
+        );
+        if (letterIndex !== -1) {
+          addLetterToWord(letterIndex);
+        }
+      }
+      // Backspace
+      else if (e.key === "Backspace") {
+        removeLastLetter();
+      }
+      // Delete/Escape
+      else if (e.key === "Delete" || e.key === "Escape") {
+        clearCurrentWord();
+      }
+      // Enter
+      else if (e.key === "Enter") {
+        submitWord();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [gameState.isActive, gameState.timeLeft, scrambledLetters, selectedIndices, currentWord, showSettings, submitWord]);
+
+  useEffect(() => {
+    if (!gameState.isActive || gameState.timeLeft <= 0) return undefined;
+    hasAutoSubmitted.current = false; // Reset for new round
+    const timer = setInterval(() => {
+      setGameState({ timeLeft: gameState.timeLeft - 1 });
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [gameState.isActive, gameState.timeLeft, setGameState]);
+
+  useEffect(() => {
+    // Auto-submit when timer reaches zero, only once per round
+    if (gameState.isActive && gameState.timeLeft === 0 && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const wordToSubmit = currentWordRef.current.join("");
+      if (wordToSubmit.length > 0) {
+        console.log('[Auto-Submit] Timer expired, auto-submitting current word:', wordToSubmit);
+        submitWord(wordToSubmit).then(() => {
+          endGame();
+          setShowGameOver(true);
+        });
+      } else {
+        endGame();
+        setShowGameOver(true);
+      }
+    }
+  }, [gameState.isActive, gameState.timeLeft, endGame, submitWord]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-green-900">
+        <div className="flex flex-col items-center">
+          <svg className="animate-spin h-12 w-12 text-amber-300 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <span className="text-amber-200 text-lg font-semibold">Loading game...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Navbar onSettingsClick={() => setShowSettings(true)} />
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 pt-20 casino-table">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 pt-20 casino-table relative">
         <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-4 sm:p-6 relative">
           {showSparkles && (
             <>
@@ -305,7 +532,7 @@ export function GameBoard({
           <div className="mb-6">
             <div className="flex justify-center mb-4">
               <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
-                {gameState.letters.map((letter, i) => (
+                {scrambledLetters.map((letter, i) => (
                   <motion.div
                     key={i}
                     className={`letter-tile ${selectedIndices.includes(i) ? "opacity-50" : ""}`}
@@ -350,7 +577,7 @@ export function GameBoard({
 
               <button
                 className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
-                onClick={submitWord}
+                onClick={() => submitWord()}
                 disabled={gameState.timeLeft <= 0 || currentWord.length < 3}
               >
                 Submit
@@ -368,7 +595,7 @@ export function GameBoard({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             <div className="flex flex-col items-center">
-              <ScoreDisplay score={gameState.score} username={user?.username || "Guest"} />
+              <ScoreDisplay score={gameState.score} username={"Guest"} />
 
               {multiplayer && (
                 <div className="mt-4 w-full score-card rounded-lg p-4 shadow-md">
@@ -402,29 +629,24 @@ export function GameBoard({
         </div>
 
         <AnimatePresence>
-          {showGameOver && (
-            <GameOverModal
-              score={gameState.score}
-              foundWords={gameState.foundWords}
-              baseWord={gameState.baseWord}
-              onClose={() => setShowGameOver(false)}
-              onPlayAgain={() => {
-                setShowGameOver(false)
-                startNewGame()
-                setCurrentWord([])
-                setSelectedIndices([])
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
           {showDefinition && selectedWord && (
             <DefinitionModal word={selectedWord} onClose={() => setShowDefinition(false)} />
           )}
         </AnimatePresence>
 
         <AnimatePresence>{showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}</AnimatePresence>
+        {showGameOver && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <GameOverModal
+              score={gameOverScore}
+              foundWords={gameOverFoundWords}
+              baseWord={gameOverBaseWord}
+              onClose={handleCloseGameOver}
+              onPlayAgain={handlePlayAgain}
+            />
+            <div className="fixed inset-0 bg-black/60 z-40" />
+          </div>
+        )}
       </div>
     </>
   )

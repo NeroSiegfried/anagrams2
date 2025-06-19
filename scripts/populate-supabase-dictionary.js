@@ -4,7 +4,7 @@ require("dotenv").config({ path: ".env.local" })
 const { createClient } = require("@supabase/supabase-js")
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_NEXT_PUBLIC_SUPABASE_URL
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl || !supabaseServiceKey) {

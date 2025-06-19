@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -19,18 +19,21 @@ interface GameOverModalProps {
 }
 
 export function GameOverModal({ score, foundWords, baseWord, onClose, onPlayAgain }: GameOverModalProps) {
-  const { user } = useAuth()
+  const { user } = useAuth() as { user: any }
   const { calculateScore } = useGame()
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
   const [showDefinition, setShowDefinition] = useState(false)
+  const hasSubmitted = useRef(false)
 
   const handleWordClick = (word: string) => {
     setSelectedWord(word)
     setShowDefinition(true)
   }
 
-  // Submit score to the server
+  // Submit score to the server only once per modal mount
   useEffect(() => {
+    if (hasSubmitted.current) return
+    hasSubmitted.current = true
     async function submitScore() {
       if (!baseWord) return
 
@@ -79,7 +82,7 @@ export function GameOverModal({ score, foundWords, baseWord, onClose, onPlayAgai
         </div>
 
         {/* Scrollable Content */}
-        <ScrollArea className="flex-1 p-6">
+        <ScrollArea className="h-[400px] p-6">
           <div className="space-y-4">
             <div className="score-card rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">

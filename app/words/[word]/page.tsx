@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Navbar } from "@/components/navbar"
@@ -19,6 +19,7 @@ interface Word {
 
 export default function WordsPage() {
   const params = useParams()
+  const router = useRouter()
   const baseWord = params.word as string
   const { calculateScore } = useGame()
   const [possibleWords, setPossibleWords] = useState<Word[]>([])
@@ -39,7 +40,23 @@ export default function WordsPage() {
         }
 
         const data = await response.json()
-        setPossibleWords(data.words || [])
+        const words = data.words || []
+        
+        // Sort by points (descending) then alphabetically
+        const sortedWords = words.sort((a: Word, b: Word) => {
+          const scoreA = calculateScore(a.length)
+          const scoreB = calculateScore(b.length)
+          
+          // First sort by score (descending)
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA
+          }
+          
+          // Then sort alphabetically
+          return a.word.localeCompare(b.word)
+        })
+        
+        setPossibleWords(sortedWords)
       } catch (error) {
         console.error("Error fetching possible words:", error)
         // Generate fallback words if API fails
@@ -66,7 +83,21 @@ export default function WordsPage() {
       }
     }
 
-    setPossibleWords([...new Set(words)].sort((a, b) => b.length - a.length))
+    // Sort by points (descending) then alphabetically
+    const sortedWords = words.sort((a: Word, b: Word) => {
+      const scoreA = calculateScore(a.length)
+      const scoreB = calculateScore(b.length)
+      
+      // First sort by score (descending)
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA
+      }
+      
+      // Then sort alphabetically
+      return a.word.localeCompare(b.word)
+    })
+
+    setPossibleWords([...new Set(sortedWords)])
   }
 
   const handleWordClick = (word: string) => {
@@ -80,12 +111,10 @@ export default function WordsPage() {
       <div className="min-h-screen flex items-center justify-center p-4 pt-20 casino-table">
         <div className="w-full max-w-2xl mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-6">
           <div className="flex items-center justify-between mb-6">
-            <Link href="/play">
-              <Button variant="ghost" className="text-amber-300 hover:text-amber-100 hover:bg-green-800">
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                Back to Game
-              </Button>
-            </Link>
+            <Button onClick={() => { localStorage.setItem('anagramsReturnToGame', '1'); router.push('/play'); }} variant="ghost" className="text-amber-300 hover:text-amber-100 hover:bg-green-800">
+              <ArrowLeft className="h-5 w-5 mr-2" />
+              Back to Game
+            </Button>
             <div className="flex items-center">
               <Target className="h-8 w-8 text-amber-300 mr-2" />
               <h1 className="text-3xl font-bold text-amber-100">All Possible Words</h1>

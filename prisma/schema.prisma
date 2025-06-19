@@ -47,4 +47,5 @@ model Word {
   word      String   @unique
   length    Int
   createdAt DateTime @default(now())
+  subwords  Json     // Array of subwords (strings)
 }

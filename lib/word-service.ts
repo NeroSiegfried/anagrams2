@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "@/lib/supabase"
+import { query } from "@/lib/db"
 
 export interface Word {
   id: string
@@ -1057,45 +1057,27 @@ const FALLBACK_WORDS = [
 
 export async function validateWord(word: string): Promise<boolean> {
   try {
-    const supabase = getSupabaseClient()
-
-    if (!supabase) {
-      // Fallback to basic word validation when Supabase is not available
-      return FALLBACK_WORDS.includes(word.toLowerCase())
-    }
-
-    const { data, error } = await supabase.from("words").select("id").eq("word", word.toLowerCase()).limit(1).single()
-
-    if (error) {
-      // If there's an error, fall back to offline validation
-      console.warn("Supabase word validation failed, using offline fallback:", error.message)
-      return FALLBACK_WORDS.includes(word.toLowerCase())
-    }
-
-    return !!data
+    const sql = await query(
+      "SELECT id FROM words WHERE word = $1 LIMIT 1",
+      [word.toLowerCase()]
+    )
+    return sql.rows.length > 0
   } catch (error: any) {
     console.warn("Error validating word, using offline fallback:", error)
-    // Fallback to offline validation
     return FALLBACK_WORDS.includes(word.toLowerCase())
   }
 }
 
 export async function getWordDefinition(word: string): Promise<string | null> {
   try {
-    const supabase = getSupabaseClient()
-
-    if (!supabase) {
-      return null
-    }
-
-    const { data, error } = await supabase.from("words").select("definition").eq("word", word.toLowerCase()).single()
-
-    if (error) {
-      console.warn("Error fetching definition:", error.message)
-      return null
-    }
-
-    return data?.definition || null
+    const sql = await query(
+      "SELECT definition FROM words WHERE word = $1 LIMIT 1",
+      [word.toLowerCase()]
+    )
+    const def = sql.rows[0]?.definition
+    if (!def) return null
+    // Always return as string - let the API handle parsing
+    return typeof def === 'string' ? def : JSON.stringify(def)
   } catch (error: any) {
     console.warn("Error fetching definition:", error)
     return null
@@ -1104,50 +1086,82 @@ export async function getWordDefinition(word: string): Promise<string | null> {
 
 export async function findValidSubwords(letters: string, minLength = 3): Promise<Word[]> {
   try {
-    const supabase = getSupabaseClient()
+    // Generate all unique combinations of the letters (length >= minLength)
+    const lowerLetters = letters.toLowerCase()
+    const letterArr = lowerLetters.split("")
+    const seenCanonicalForms = new Set<string>()
+    const foundWords: Word[] = []
 
-    if (!supabase) {
-      return generateFallbackSubwords(letters, minLength)
-    }
-
-    // Count the occurrences of each letter
-    const letterCounts: Record<string, number> = {}
-    for (const char of letters.toLowerCase()) {
-      letterCounts[char] = (letterCounts[char] || 0) + 1
-    }
-
-    // Query the database for potential subwords
-    const { data, error } = await supabase
-      .from("words")
-      .select("*")
-      .gte("length", minLength)
-      .lte("length", letters.length)
-      .order("length", { ascending: false })
-      .order("is_common", { ascending: false })
-      .limit(1000)
-
-    if (error) {
-      console.warn("Error finding subwords, using fallback:", error.message)
-      return generateFallbackSubwords(letters, minLength)
-    }
-
-    // Filter to only include valid subwords
-    const validSubwords = (data || []).filter((row: Word) => {
-      // Check if all letters in the subword are available in the original letters
-      const subwordCounts: Record<string, number> = {}
-      for (const char of row.word.toLowerCase()) {
-        subwordCounts[char] = (subwordCounts[char] || 0) + 1
-        if (!letterCounts[char] || subwordCounts[char] > letterCounts[char]) {
-          return false
+    // Helper to generate all unique combinations of the letters
+    function* getCombinations(arr: string[], k: number): Generator<string[]> {
+      if (k === 0) {
+        yield []
+        return
+      }
+      for (let i = 0; i <= arr.length - k; i++) {
+        const head = arr[i]
+        const rest = arr.slice(i + 1)
+        for (const tail of getCombinations(rest, k - 1)) {
+          yield [head, ...tail]
         }
       }
-      return true
-    })
+    }
 
-    return validSubwords
+    // Collect all canonical forms first
+    const canonicalForms: string[] = []
+    for (let len = minLength; len <= letterArr.length; len++) {
+      for (const combo of getCombinations(letterArr, len)) {
+        const canonical = combo.slice().sort().join("")
+        if (!seenCanonicalForms.has(canonical)) {
+          seenCanonicalForms.add(canonical)
+          canonicalForms.push(canonical)
+        }
+      }
+    }
+
+    // Batch query for all canonical forms
+    if (canonicalForms.length > 0) {
+      const placeholders = canonicalForms.map((_, i) => `$${i + 1}`).join(", ")
+      const sql = await query(
+        `SELECT * FROM words WHERE canonical_form IN (${placeholders})`,
+        canonicalForms
+      )
+      foundWords.push(...(sql.rows as Word[]))
+    }
+
+    console.log(`Found ${foundWords.length} subwords for "${letters}"`)
+    return foundWords
   } catch (error: any) {
-    console.warn("Error finding subwords:", error)
-    return generateFallbackSubwords(letters, minLength)
+    console.warn("Error finding subwords with new method, falling back to old method:", error)
+    // Fall back to the old method
+    try {
+      // Get all words of appropriate length
+      const sql = await query(
+        "SELECT * FROM words WHERE length >= $1 AND length <= $2 ORDER BY length DESC, is_common DESC LIMIT 1000",
+        [minLength, letters.length]
+      )
+      const data = sql.rows as Word[]
+      // Filter to only include valid subwords
+      const letterCounts: Record<string, number> = {}
+      for (const char of letters.toLowerCase()) {
+        letterCounts[char] = (letterCounts[char] || 0) + 1
+      }
+      const validSubwords = (data || []).filter((row: Word) => {
+        const subwordCounts: Record<string, number> = {}
+        for (const char of row.word.toLowerCase()) {
+          subwordCounts[char] = (subwordCounts[char] || 0) + 1
+          if (!letterCounts[char] || subwordCounts[char] > letterCounts[char]) {
+            return false
+          }
+        }
+        return true
+      })
+      console.log(`Found ${validSubwords.length} subwords using fallback method for "${letters}"`)
+      return validSubwords
+    } catch (fallbackError: any) {
+      console.warn("Error finding subwords, using offline fallback:", fallbackError)
+      return generateFallbackSubwords(letters, minLength)
+    }
   }
 }
 
@@ -1182,29 +1196,12 @@ function generateFallbackSubwords(letters: string, minLength = 3): Word[] {
 
 export async function findAnagrams(word: string): Promise<Word[]> {
   try {
-    const supabase = getSupabaseClient()
-
-    if (!supabase) {
-      return []
-    }
-
-    // Sort the letters to create a canonical form
     const canonicalForm = word.toLowerCase().split("").sort().join("")
-
-    // Query the database for anagrams
-    const { data, error } = await supabase
-      .from("words")
-      .select("*")
-      .eq("canonical_form", canonicalForm)
-      .neq("word", word.toLowerCase())
-      .limit(100)
-
-    if (error) {
-      console.warn("Error finding anagrams:", error.message)
-      return []
-    }
-
-    return data || []
+    const sql = await query(
+      "SELECT * FROM words WHERE canonical_form = $1 AND word <> $2 LIMIT 100",
+      [canonicalForm, word.toLowerCase()]
+    )
+    return sql.rows as Word[]
   } catch (error: any) {
     console.warn("Error finding anagrams:", error)
     return []
@@ -1212,37 +1209,20 @@ export async function findAnagrams(word: string): Promise<Word[]> {
 }
 
 export async function findAllPossibleWords(letters: string, minLength = 3): Promise<Word[]> {
-  const subwords = await findValidSubwords(letters, minLength)
-  return subwords
+  return await findValidSubwords(letters, minLength)
 }
 
 export async function addWord(word: string, isCommon = false, definition: string | null = null): Promise<Word> {
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    throw new Error("Supabase client not available. Cannot add words in offline mode.")
-  }
-
   try {
-    // Create canonical form for anagram matching
     const canonicalForm = word.toLowerCase().split("").sort().join("")
-
-    const { data, error } = await supabase
-      .from("words")
-      .upsert({
-        word: word.toLowerCase(),
-        length: word.length,
-        is_common: isCommon,
-        definition: definition,
-        canonical_form: canonicalForm,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return data
+    const sql = await query(
+      `INSERT INTO words (word, length, is_common, definition, canonical_form, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (word) DO UPDATE SET is_common = $3, definition = $4, canonical_form = $5
+       RETURNING *`,
+      [word.toLowerCase(), word.length, isCommon, definition, canonicalForm]
+    )
+    return sql.rows[0] as Word
   } catch (error: any) {
     console.error("Error adding word:", error)
     throw error
@@ -1251,43 +1231,11 @@ export async function addWord(word: string, isCommon = false, definition: string
 
 export async function getWordsByLength(length: number, limit = 100): Promise<Word[]> {
   try {
-    const supabase = getSupabaseClient()
-
-    if (!supabase) {
-      return FALLBACK_WORDS.filter((word) => word.length === length)
-        .slice(0, limit)
-        .map((word) => ({
-          id: word,
-          word,
-          length: word.length,
-          is_common: true,
-          definition: null,
-          created_at: new Date().toISOString(),
-        }))
-    }
-
-    const { data, error } = await supabase
-      .from("words")
-      .select("*")
-      .eq("length", length)
-      .order("is_common", { ascending: false })
-      .limit(limit)
-
-    if (error) {
-      console.warn("Error fetching words by length:", error.message)
-      return FALLBACK_WORDS.filter((word) => word.length === length)
-        .slice(0, limit)
-        .map((word) => ({
-          id: word,
-          word,
-          length: word.length,
-          is_common: true,
-          definition: null,
-          created_at: new Date().toISOString(),
-        }))
-    }
-
-    return data || []
+    const sql = await query(
+      "SELECT * FROM words WHERE length = $1 ORDER BY is_common DESC LIMIT $2",
+      [length, limit]
+    )
+    return sql.rows as Word[]
   } catch (error: any) {
     console.warn("Error fetching words by length:", error)
     return FALLBACK_WORDS.filter((word) => word.length === length)
@@ -1305,44 +1253,11 @@ export async function getWordsByLength(length: number, limit = 100): Promise<Wor
 
 export async function getCommonWordsByLength(length: number, limit = 20): Promise<Word[]> {
   try {
-    const supabase = getSupabaseClient()
-
-    if (!supabase) {
-      return FALLBACK_WORDS.filter((word) => word.length === length)
-        .slice(0, limit)
-        .map((word) => ({
-          id: word,
-          word,
-          length: word.length,
-          is_common: true,
-          definition: null,
-          created_at: new Date().toISOString(),
-        }))
-    }
-
-    const { data, error } = await supabase
-      .from("words")
-      .select("*")
-      .eq("length", length)
-      .eq("is_common", true)
-      .order("created_at", { ascending: false })
-      .limit(limit)
-
-    if (error) {
-      console.warn("Error fetching common words by length:", error.message)
-      return FALLBACK_WORDS.filter((word) => word.length === length)
-        .slice(0, limit)
-        .map((word) => ({
-          id: word,
-          word,
-          length: word.length,
-          is_common: true,
-          definition: null,
-          created_at: new Date().toISOString(),
-        }))
-    }
-
-    return data || []
+    const sql = await query(
+      "SELECT * FROM words WHERE length = $1 AND is_common = true ORDER BY created_at DESC LIMIT $2",
+      [length, limit]
+    )
+    return sql.rows as Word[]
   } catch (error: any) {
     console.warn("Error fetching common words by length:", error)
     return FALLBACK_WORDS.filter((word) => word.length === length)
