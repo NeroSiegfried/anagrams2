@@ -3,32 +3,35 @@ import { authService } from '@/lib/auth-service'
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const { sessionToken } = await request.json()
 
-    // Validate input
-    if (!email || !password) {
+    if (!sessionToken) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'Session token is required' },
         { status: 400 }
       )
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
+    // Validate session
+    const session = await authService.getSession(sessionToken)
+    if (!session) {
       return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
+        { error: 'Invalid session' },
+        { status: 401 }
       )
     }
 
-    // Login user
-    const { user, session } = await authService.loginUser(email, password)
+    // Get user and preferences
+    const user = await authService.getUserById(session.userId)
+    const preferences = await authService.getUserPreferences(session.userId)
 
-    // Get user preferences
-    const preferences = await authService.getUserPreferences(user.id)
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
 
-    // Return user data and session
     return NextResponse.json({
       user: {
         id: user.id,
@@ -48,19 +51,10 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('Login error:', error)
-    
-    // Handle authentication errors
-    if (error.message.includes('Invalid email or password')) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
-    }
-
+    console.error('Session validation error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
-}
+} 

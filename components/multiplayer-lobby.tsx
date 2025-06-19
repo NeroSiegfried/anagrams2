@@ -83,28 +83,28 @@ export function MultiplayerLobby() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen flex items-center justify-center p-4 pt-20 casino-table">
-        <div className="w-full max-w-md mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-6">
-          <div className="flex items-center justify-center mb-6">
-            <Users className="h-8 w-8 text-amber-300 mr-2" />
-            <h1 className="text-3xl font-bold text-amber-100">Multiplayer</h1>
+      <div className="min-h-screen flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table">
+        <div className="w-full max-w-md mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-3 sm:p-6">
+          <div className="flex items-center justify-center mb-4 sm:mb-6">
+            <Users className="h-6 w-6 sm:h-8 sm:w-8 text-amber-300 mr-2" />
+            <h1 className="text-2xl sm:text-3xl font-bold text-amber-100">Multiplayer</h1>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <motion.div
-              className="score-card rounded-lg p-4"
+              className="score-card rounded-lg p-3 sm:p-4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
             >
-              <h2 className="text-xl font-bold mb-4 text-amber-100 flex items-center">
-                <GamepadIcon className="h-5 w-5 mr-2 text-amber-300" />
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-amber-100 flex items-center">
+                <GamepadIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-amber-300" />
                 Find Random Match
               </h2>
 
               {!user && (
-                <div className="mb-4">
-                  <Label htmlFor="random-username" className="text-amber-200">
+                <div className="mb-3 sm:mb-4">
+                  <Label htmlFor="random-username" className="text-sm sm:text-base text-amber-200">
                     Temporary Username
                   </Label>
                   <Input
@@ -112,14 +112,14 @@ export function MultiplayerLobby() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter a username for this match"
-                    className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                    className="mt-1 sm:mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 text-sm sm:text-base"
                     disabled={isFindingMatch}
                   />
                 </div>
               )}
 
               <Button
-                className="w-full wood-button text-amber-900 font-semibold py-3"
+                className="w-full wood-button text-amber-900 font-semibold py-2 sm:py-3 text-sm sm:text-base"
                 onClick={handleFindMatch}
                 disabled={isFindingMatch}
               >
@@ -138,14 +138,14 @@ export function MultiplayerLobby() {
             </motion.div>
 
             <motion.div
-              className="score-card rounded-lg p-4"
+              className="score-card rounded-lg p-3 sm:p-4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
             >
-              <h2 className="text-xl font-bold mb-4 text-amber-100">Create Private Game</h2>
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-amber-100">Create Private Game</h2>
               <Button
-                className="w-full wood-button text-amber-900 font-semibold py-3"
+                className="w-full wood-button text-amber-900 font-semibold py-2 sm:py-3 text-sm sm:text-base"
                 onClick={handleCreateGame}
                 disabled={isCreatingGame}
               >
@@ -164,15 +164,15 @@ export function MultiplayerLobby() {
             </motion.div>
 
             <motion.div
-              className="score-card rounded-lg p-4"
+              className="score-card rounded-lg p-3 sm:p-4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              <h2 className="text-xl font-bold mb-4 text-amber-100">Join Private Game</h2>
-              <div className="space-y-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-amber-100">Join Private Game</h2>
+              <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <Label htmlFor="game-id" className="text-amber-200">
+                  <Label htmlFor="game-id" className="text-sm sm:text-base text-amber-200">
                     Game ID
                   </Label>
                   <Input
@@ -180,14 +180,14 @@ export function MultiplayerLobby() {
                     value={gameId}
                     onChange={(e) => setGameId(e.target.value.toUpperCase())}
                     placeholder="Enter game ID"
-                    className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                    className="mt-1 sm:mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 text-sm sm:text-base"
                     disabled={isJoiningGame}
                   />
                 </div>
 
                 {!user && (
                   <div>
-                    <Label htmlFor="join-username" className="text-amber-200">
+                    <Label htmlFor="join-username" className="text-sm sm:text-base text-amber-200">
                       Temporary Username
                     </Label>
                     <Input
@@ -195,14 +195,14 @@ export function MultiplayerLobby() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Enter a username for this match"
-                      className="mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+                      className="mt-1 sm:mt-2 bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 text-sm sm:text-base"
                       disabled={isJoiningGame}
                     />
                   </div>
                 )}
 
                 <Button
-                  className="w-full wood-button text-amber-900 font-semibold py-3"
+                  className="w-full wood-button text-amber-900 font-semibold py-2 sm:py-3 text-sm sm:text-base"
                   onClick={handleJoinGame}
                   disabled={isJoiningGame}
                 >

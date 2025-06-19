@@ -1,17 +1,35 @@
 "use client"
 
-import { AlertTriangle, Database, ExternalLink, X, Download, Loader2, CheckCircle, Info } from 'lucide-react'
-import { Button } from "@/components/ui/button"
+import { Database, CheckCircle } from 'lucide-react'
 import { useState, useEffect } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 
 export function DatabaseStatus() {
-  // For now, just show always connected (Neon/Postgres)
-  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'error'>('connected')
+  const [show, setShow] = useState(true)
+
+  useEffect(() => {
+    // Hide the popup after 3 seconds
+    const timer = setTimeout(() => {
+      setShow(false)
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [])
 
   return (
-    <div className="flex items-center space-x-2">
-      <Database className="h-5 w-5 text-green-400" />
-      <span className="text-green-400 font-semibold">Database: Connected (Neon)</span>
-    </div>
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="fixed top-20 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2"
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 100 }}
+          transition={{ duration: 0.3 }}
+        >
+          <CheckCircle className="h-4 w-4" />
+          <span className="text-sm font-medium">Database Connected (Neon)</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

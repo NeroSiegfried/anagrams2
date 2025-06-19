@@ -1,151 +1,204 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Loader2, UserPlus } from "lucide-react"
 
-interface SignupModalProps {
-  onClose: () => void
-  onLoginClick?: () => void
-}
-
-export function SignupModal({ onClose, onLoginClick }: SignupModalProps) {
-  const { signup } = useAuth()
-  const { toast } = useToast()
+export function SignupModal() {
+  const [open, setOpen] = useState(false)
   const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [displayName, setDisplayName] = useState("")
   const [loading, setLoading] = useState(false)
+  const { register } = useAuth()
+  const { toast } = useToast()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const validateForm = () => {
     if (!username || !email || !password || !confirmPassword) {
       toast({
-        title: "Error",
-        description: "Please fill in all fields",
+        title: "Missing information",
+        description: "Please fill in all required fields",
         variant: "destructive",
       })
-      return
+      return false
+    }
+
+    if (username.length < 3 || username.length > 20) {
+      toast({
+        title: "Invalid username",
+        description: "Username must be between 3 and 20 characters",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    const usernameRegex = /^[a-zA-Z0-9_]+$/
+    if (!usernameRegex.test(username)) {
+      toast({
+        title: "Invalid username",
+        description: "Username can only contain letters, numbers, and underscores",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    if (password.length < 8) {
+      toast({
+        title: "Weak password",
+        description: "Password must be at least 8 characters long",
+        variant: "destructive",
+      })
+      return false
     }
 
     if (password !== confirmPassword) {
       toast({
-        title: "Error",
-        description: "Passwords do not match",
+        title: "Passwords don't match",
+        description: "Please make sure your passwords match",
         variant: "destructive",
       })
-      return
+      return false
     }
 
-    if (password.length < 6) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 6 characters",
-        variant: "destructive",
-      })
+    return true
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!validateForm()) {
       return
     }
 
     setLoading(true)
-
     try {
-      await signup(email, password, username)
-      onClose()
-    } catch (error) {
-      // Error is handled in the auth context
+      await register(username, email, password, displayName || username)
+      toast({
+        title: "Welcome!",
+        description: "Your account has been created successfully",
+        variant: "default",
+      })
+      setOpen(false)
+      setUsername("")
+      setEmail("")
+      setPassword("")
+      setConfirmPassword("")
+      setDisplayName("")
+    } catch (error: any) {
+      toast({
+        title: "Registration failed",
+        description: error.message || "Please try again with different credentials",
+        variant: "destructive",
+      })
+    } finally {
       setLoading(false)
     }
   }
 
   return (
-    <motion.div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-    >
-      <motion.div
-        className="game-card border-4 border-amber-600 rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-center mb-6">
-          <UserPlus className="h-8 w-8 text-amber-300 mr-2" />
-          <h2 className="text-2xl font-bold text-amber-100">Sign Up</h2>
-        </div>
-
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="wood-button text-amber-900 font-semibold">
+          <UserPlus className="h-4 w-4 mr-2" />
+          Sign Up
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px] border-4 border-amber-600 bg-green-900/95">
+        <DialogHeader>
+          <DialogTitle className="text-amber-100 text-2xl font-bold">Join the Game!</DialogTitle>
+          <DialogDescription className="text-amber-200">
+            Enter your information to create a new account.
+          </DialogDescription>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-amber-200">
-              Email
-            </Label>
+            <Label htmlFor="username" className="text-amber-200 font-medium">Username *</Label>
+            <Input
+              id="username"
+              type="text"
+              placeholder="Choose a username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
+              className="bg-green-800/50 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 focus:ring-amber-400"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="displayName" className="text-amber-200 font-medium">Display Name</Label>
+            <Input
+              id="displayName"
+              type="text"
+              placeholder="Your display name (optional)"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={loading}
+              className="bg-green-800/50 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 focus:ring-amber-400"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email" className="text-amber-200 font-medium">Email *</Label>
             <Input
               id="email"
               type="email"
+              placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
               disabled={loading}
-              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+              required
+              className="bg-green-800/50 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 focus:ring-amber-400"
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="username" className="text-amber-200">
-              Username
-            </Label>
-            <Input
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Choose a username"
-              disabled={loading}
-              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-amber-200">
-              Password
-            </Label>
+            <Label htmlFor="password" className="text-amber-200 font-medium">Password *</Label>
             <Input
               id="password"
               type="password"
+              placeholder="Create a password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a password"
               disabled={loading}
-              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+              required
+              className="bg-green-800/50 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 focus:ring-amber-400"
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword" className="text-amber-200">
-              Confirm Password
-            </Label>
+            <Label htmlFor="confirmPassword" className="text-amber-200 font-medium">Confirm Password *</Label>
             <Input
               id="confirmPassword"
               type="password"
+              placeholder="Confirm your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm your password"
               disabled={loading}
-              className="bg-amber-900/20 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400"
+              required
+              className="bg-green-800/50 border-amber-600 text-amber-100 placeholder:text-amber-400 focus:border-amber-400 focus:ring-amber-400"
             />
           </div>
-
           <Button type="submit" className="w-full wood-button text-amber-900 font-semibold py-3" disabled={loading}>
             {loading ? (
               <>
@@ -153,25 +206,14 @@ export function SignupModal({ onClose, onLoginClick }: SignupModalProps) {
                 Creating account...
               </>
             ) : (
-              "Sign Up"
+              <>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Create Account
+              </>
             )}
           </Button>
         </form>
-
-        <div className="mt-4 text-center">
-          {onLoginClick && (
-            <div className="mb-3 text-amber-200">
-              Already have an account?{" "}
-              <button className="text-amber-300 hover:text-amber-100 underline" onClick={onLoginClick}>
-                Log in
-              </button>
-            </div>
-          )}
-          <Button variant="link" className="text-amber-300 hover:text-amber-100" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
-      </motion.div>
-    </motion.div>
+      </DialogContent>
+    </Dialog>
   )
 }

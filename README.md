@@ -28,3 +28,89 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+## Authentication System
+
+The game includes a comprehensive authentication system designed to be easily extensible for OAuth providers (Google, GitHub, etc.) in the future.
+
+### Features
+
+- **User Registration**: Secure account creation with validation
+- **User Login**: Email/password authentication with session management
+- **Session Management**: Secure session tokens with automatic expiration
+- **User Preferences**: Per-user game settings and preferences
+- **OAuth Ready**: Database schema supports future OAuth integration
+
+### Database Schema
+
+The authentication system uses the following tables:
+
+- `users`: User accounts with email, username, and profile information
+- `accounts`: OAuth provider accounts (for future OAuth integration)
+- `sessions`: User session management
+- `verification_tokens`: Email verification tokens
+- `user_preferences`: User-specific game settings
+- `games`: Game instances and metadata
+- `game_players`: Many-to-many relationship between users and games
+- `scores`: Individual game scores
+- `game_history`: Detailed game history for analytics
+- `words`: Dictionary words with definitions
+
+### Setup
+
+1. **Database Setup**: Run the database migration script:
+   ```bash
+   node scripts/setup-database.js
+   ```
+
+2. **Environment Variables**: Ensure your `.env.local` file includes:
+   ```
+   DATABASE_URL=your_postgresql_connection_string
+   ```
+
+3. **Install Dependencies**: The authentication system requires bcryptjs:
+   ```bash
+   npm install bcryptjs @types/bcryptjs --legacy-peer-deps
+   ```
+
+### Usage
+
+- **Registration**: Users can create accounts with username, email, and password
+- **Login**: Users can log in with email and password
+- **Session Persistence**: Sessions are automatically maintained across browser sessions
+- **User Preferences**: Game settings are saved per user
+- **Logout**: Users can log out, which invalidates their session
+
+### Future OAuth Integration
+
+The system is designed to easily support OAuth providers:
+
+1. **Database Ready**: The `accounts` table supports OAuth provider data
+2. **Service Layer**: The `AuthService` class includes OAuth account linking methods
+3. **Context Integration**: The auth context can be extended to handle OAuth flows
+
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Set up your database and run migrations
+4. Configure environment variables
+5. Start the development server: `npm run dev`
+
+## Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend**: Next.js API Routes, PostgreSQL
+- **Authentication**: Custom session-based auth with bcryptjs
+- **Database**: PostgreSQL with Prisma ORM
+- **Styling**: Tailwind CSS with shadcn/ui components
+- **Animations**: Framer Motion
+- **Audio**: Web Audio API
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License.

@@ -235,6 +235,18 @@ export function GameBoard({
     setSelectedIndices([])
   }
 
+  const handleSlotClick = (slotIndex: number) => {
+    if (slotIndex >= currentWord.length || gameState.timeLeft <= 0) return
+    
+    // Remove the letter from the current word
+    const letterToRemove = currentWord[slotIndex]
+    setCurrentWord((prev) => prev.filter((_, i) => i !== slotIndex))
+    
+    // Find the index of this letter in the scrambled letters and remove it from selectedIndices
+    const letterIndex = selectedIndices[slotIndex]
+    setSelectedIndices((prev) => prev.filter((_, i) => i !== slotIndex))
+  }
+
   // True random shuffle for the shuffle button
   function scrambleLetters(word: string): string[] {
     const letters = word.split("")
@@ -503,8 +515,8 @@ export function GameBoard({
   return (
     <>
       <Navbar onSettingsClick={() => setShowSettings(true)} />
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 pt-20 casino-table relative">
-        <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-4 sm:p-6 relative">
+      <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
+        <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-2 sm:p-4 md:p-6 relative">
           {showSparkles && (
             <>
               <div className="sparkle" />
@@ -514,46 +526,46 @@ export function GameBoard({
             </>
           )}
 
-          <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <div className="flex justify-between items-center mb-2 sm:mb-4 md:mb-6">
             <div className="flex items-center">
-              <Clock className="mr-2 text-amber-300" />
-              <span className="text-xl sm:text-2xl font-bold text-amber-100 font-mono">
+              <Clock className="mr-1 sm:mr-2 text-amber-300 h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="text-lg sm:text-xl md:text-2xl font-bold text-amber-100 font-mono">
                 {formatTime(gameState.timeLeft)}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold text-center text-amber-100">
+            <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-center text-amber-100">
               Round {gameState.currentRound}
             </h1>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsMuted(!isMuted)}
-                className="text-amber-300 hover:text-amber-100 hover:bg-green-800"
+                className="text-amber-300 hover:text-amber-100 hover:bg-green-800 h-8 w-8 sm:h-10 sm:w-10"
               >
-                {isMuted ? <VolumeX /> : <Volume2 />}
+                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-amber-300 hover:text-amber-100 hover:bg-green-800"
+                className="text-amber-300 hover:text-amber-100 hover:bg-green-800 h-8 w-8 sm:h-10 sm:w-10"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   setShowSettings(true)
                 }}
               >
-                <Settings />
+                <Settings className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
           {/* Tiles first (above) on mobile and desktop */}
-          <div className="mb-6">
-            <div className="flex justify-center mb-4">
-              <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+          <div className="mb-4 sm:mb-6">
+            <div className="flex justify-center mb-2 sm:mb-4">
+              <div className="flex flex-wrap justify-center gap-1 sm:gap-2 md:gap-3">
                 {scrambledLetters.map((letter, i) => (
                   <motion.div
                     key={i}
@@ -562,7 +574,7 @@ export function GameBoard({
                     whileTap={selectedIndices.includes(i) || gameState.timeLeft <= 0 ? {} : { scale: 0.95 }}
                     onClick={() => !selectedIndices.includes(i) && gameState.timeLeft > 0 && addLetterToWord(i)}
                   >
-                    <span className="text-2xl font-bold text-amber-900 z-10 relative">{letter}</span>
+                    <span className="text-xl sm:text-2xl font-bold text-amber-900 z-10 relative">{letter.toUpperCase()}</span>
                   </motion.div>
                 ))}
               </div>
@@ -570,15 +582,16 @@ export function GameBoard({
           </div>
 
           {/* Slots below tiles */}
-          <div className="mb-6">
-            <div className="flex justify-center mb-4 p-4">
-              <div className="flex space-x-2 sm:space-x-3">
+          <div className="mb-4 sm:mb-6">
+            <div className="flex justify-center mb-2 sm:mb-4 p-2 sm:p-4">
+              <div className="flex space-x-1 sm:space-x-2 md:space-x-3">
                 {Array.from({ length: gameState.currentLetterCount }).map((_, i) => (
                   <div
                     key={i}
                     className={`letter-slot ${
                       i < currentWord.length ? "filled" : ""
-                    }`}
+                    } ${i < currentWord.length ? "cursor-pointer" : ""}`}
+                    onClick={() => i < currentWord.length && handleSlotClick(i)}
                     style={{
                       ...(feedbackState === "correct" ? {
                         backgroundColor: "#22c55e",
@@ -603,7 +616,7 @@ export function GameBoard({
                     }}
                   >
                     {i < currentWord.length && (
-                      <span className="text-2xl font-bold text-amber-100">{currentWord[i]}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-amber-100">{currentWord[i].toUpperCase()}</span>
                     )}
                     {feedbackState === "bonus" && (
                       <div
@@ -625,9 +638,9 @@ export function GameBoard({
               </div>
             </div>
 
-            <div className="flex justify-center items-center space-x-2 sm:space-x-4 mb-6">
+            <div className="flex justify-center items-center space-x-1 sm:space-x-2 md:space-x-4 mb-4 sm:mb-6">
               <button
-                className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                className="wood-button px-2 sm:px-4 md:px-6 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900 text-sm sm:text-base"
                 onClick={clearCurrentWord}
                 disabled={gameState.timeLeft <= 0 || currentWord.length === 0}
               >
@@ -636,34 +649,34 @@ export function GameBoard({
 
               <button
                 ref={submitButtonRef}
-                className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                className="wood-button px-2 sm:px-4 md:px-6 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900 text-sm sm:text-base"
                 onClick={() => submitWord()}
               >
                 Submit
               </button>
 
               <button
-                className="wood-button px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
+                className="wood-button px-2 sm:px-3 md:px-4 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900"
                 onClick={shuffleLetters}
                 disabled={gameState.timeLeft <= 0}
               >
-                <Shuffle className="h-5 w-5" />
+                <Shuffle className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 md:gap-6">
             <div className="flex flex-col items-center">
               <ScoreDisplay score={gameState.score} username={"Guest"} />
 
               {multiplayer && (
-                <div className="mt-4 w-full score-card rounded-lg p-4 shadow-md">
-                  <h3 className="text-lg font-semibold mb-2 text-amber-100">Opponents</h3>
-                  <div className="space-y-2">
+                <div className="mt-2 sm:mt-4 w-full score-card rounded-lg p-2 sm:p-4 shadow-md">
+                  <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 text-amber-100">Opponents</h3>
+                  <div className="space-y-1 sm:space-y-2">
                     {opponents.map((opponent, i) => (
-                      <div key={i} className="flex justify-between items-center p-2 felt-pattern rounded">
-                        <span className="text-amber-100">{opponent}</span>
-                        <span className="font-bold text-amber-300">{opponentScores[opponent] || 0}</span>
+                      <div key={i} className="flex justify-between items-center p-1 sm:p-2 felt-pattern rounded">
+                        <span className="text-sm sm:text-base text-amber-100">{opponent}</span>
+                        <span className="font-bold text-amber-300 text-sm sm:text-base">{opponentScores[opponent] || 0}</span>
                       </div>
                     ))}
                   </div>
@@ -671,7 +684,14 @@ export function GameBoard({
               )}
             </div>
 
-            <FoundWordsList words={gameState.foundWords} onWordClick={handleWordClick} />
+            {/* Show found words count instead of full list during gameplay */}
+            <div className="score-card rounded-lg p-2 sm:p-4 shadow-lg">
+              <h2 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3 text-amber-100">Progress</h2>
+              <div className="text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-amber-300 mb-1 sm:mb-2">{gameState.foundWords.length}</p>
+                <p className="text-sm sm:text-base text-amber-200">Words Found</p>
+              </div>
+            </div>
           </div>
 
           {gameState.timeLeft <= 0 && (
