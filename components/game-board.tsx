@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Shuffle, Volume2, VolumeX, Clock, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { useGame } from "@/lib/game-context"
 import { useAuth } from "@/lib/auth-context"
 import { FoundWordsList } from "@/components/found-words-list"
@@ -54,6 +54,7 @@ export function GameBoard({
   const [restoringGameOver, setRestoringGameOver] = useState(false)
   const hasRestoredRef = useRef(false)
   const hasAutoSubmitted = useRef(false)
+  const hasStartedNewGameRef = useRef(false)
 
   const audioGeneratorRef = useRef<AudioGenerator | null>(null)
 
@@ -149,8 +150,9 @@ export function GameBoard({
       return; // Prevent starting a new game after restoration
     }
     // Only start a new game if not restoring in this session
-    if (!hasRestoredRef.current) {
+    if (!hasRestoredRef.current && !hasStartedNewGameRef.current) {
       console.log('[GameBoard] No restoration needed, starting new game');
+      hasStartedNewGameRef.current = true;
       localStorage.removeItem('anagramsGameOverState');
       localStorage.removeItem('anagramsReturnToGame');
       setLoading(true);
@@ -162,7 +164,7 @@ export function GameBoard({
         console.log('[GameBoard] New game started');
       });
     } else {
-      console.log('[GameBoard] Restoration already performed in this session, skipping new game');
+      console.log('[GameBoard] Restoration already performed in this session or game already started, skipping new game');
     }
   }, []);
 
@@ -251,6 +253,7 @@ export function GameBoard({
     if (gameState.timeLeft <= 0 && !wordOverride) return;
 
     if (word.length < 3) {
+      console.log('[submitWord] Word too short, showing toast');
       toast({
         title: "Word too short",
         description: "Words must be at least 3 letters long",
@@ -263,14 +266,16 @@ export function GameBoard({
     }
 
     if (gameState.foundWords.includes(word)) {
+      console.log('[submitWord] Word already found, showing toast:', word);
       toast({
         title: "Already found",
-        description: "You've already found this word",
+        description: `${word} was already found`,
         variant: "destructive",
       })
       setFeedbackState("incorrect")
       playSound("incorrect")
       setTimeout(() => setFeedbackState("idle"), 500)
+      clearCurrentWord()
       return
     }
 
@@ -298,6 +303,7 @@ export function GameBoard({
         playSound("correct")
       }
 
+      console.log('[submitWord] Word found, showing toast:', word, 'score:', wordScore);
       toast({
         title: "Word found!",
         description: `+${wordScore} points`,
@@ -307,6 +313,7 @@ export function GameBoard({
       setFeedbackState("incorrect")
       playSound("incorrect")
 
+      console.log('[submitWord] Invalid word, showing toast:', word);
       toast({
         title: "Invalid word",
         description: "Not in our dictionary",
@@ -406,6 +413,7 @@ export function GameBoard({
     localStorage.removeItem('anagramsGameOverState');
     setRestoringGameOver(false);
     hasRestoredRef.current = false;
+    hasStartedNewGameRef.current = false;
     setLoading(true);
     Promise.resolve(startNewGame()).then(() => {
       setCurrentWord([]);
@@ -477,15 +485,18 @@ export function GameBoard({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-green-900">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-12 w-12 text-amber-300 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          <span className="text-amber-200 text-lg font-semibold">Loading game...</span>
+      <>
+        <Navbar onSettingsClick={() => setShowSettings(true)} />
+        <div className="min-h-screen flex items-center justify-center bg-green-900">
+          <div className="flex flex-col items-center">
+            <svg className="animate-spin h-12 w-12 text-amber-300 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            <span className="text-amber-200 text-lg font-semibold">Loading game...</span>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -560,17 +571,54 @@ export function GameBoard({
 
           {/* Slots below tiles */}
           <div className="mb-6">
-            <div className="flex justify-center mb-4 overflow-x-auto pb-2">
+            <div className="flex justify-center mb-4 p-4">
               <div className="flex space-x-2 sm:space-x-3">
                 {Array.from({ length: gameState.currentLetterCount }).map((_, i) => (
                   <div
                     key={i}
                     className={`letter-slot ${
-                      i < currentWord.length ? `filled ${feedbackState !== "idle" ? feedbackState : ""}` : ""
+                      i < currentWord.length ? "filled" : ""
                     }`}
+                    style={{
+                      ...(feedbackState === "correct" ? {
+                        backgroundColor: "#22c55e",
+                        boxShadow: "0 0 20px 4px #22c55e",
+                        transform: "scale(1.05)",
+                        transition: "all 0.3s ease"
+                      } : {}),
+                      ...(feedbackState === "incorrect" ? {
+                        backgroundColor: "#ef4444",
+                        boxShadow: "0 0 20px 4px #ef4444",
+                        transform: "scale(1.05)",
+                        transition: "all 0.3s ease",
+                        animation: "shake 0.6s ease-in-out"
+                      } : {}),
+                      ...(feedbackState === "bonus" ? {
+                        background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)",
+                        boxShadow: "0 0 30px 8px #fbbf24, 0 0 50px 12px #f59e0b",
+                        transform: "scale(1.1)",
+                        transition: "all 0.4s ease",
+                        position: "relative"
+                      } : {})
+                    }}
                   >
                     {i < currentWord.length && (
                       <span className="text-2xl font-bold text-amber-100">{currentWord[i]}</span>
+                    )}
+                    {feedbackState === "bonus" && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "-10px",
+                          left: "-10px",
+                          right: "-10px",
+                          bottom: "-10px",
+                          background: "radial-gradient(circle, #fbbf24 0%, transparent 70%)",
+                          animation: "sparkle-pulse 0.8s ease-in-out",
+                          zIndex: -1,
+                          pointerEvents: "none"
+                        }}
+                      />
                     )}
                   </div>
                 ))}

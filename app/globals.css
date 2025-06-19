@@ -355,3 +355,57 @@
     font-size: 1.125rem;
   }
 }
+
+/* Enhanced feedback animations for word submission */
+.feedback-correct {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+  box-shadow: 0 0 20px 4px #22c55e !important;
+  transform: scale(1.05) !important;
+  transition: all 0.3s ease !important;
+}
+
+.feedback-incorrect {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  box-shadow: 0 0 20px 4px #ef4444 !important;
+  transform: scale(1.05) !important;
+  transition: all 0.3s ease !important;
+}
+
+.feedback-bonus {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+  box-shadow: 0 0 30px 8px #fbbf24, 0 0 50px 12px #f59e0b !important;
+  transform: scale(1.1) !important;
+  transition: all 0.4s ease !important;
+}
+
+.shake {
+  animation: shake 0.6s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0) scale(1.05); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-8px) scale(1.05); }
+  20%, 40%, 60%, 80% { transform: translateX(8px) scale(1.05); }
+}
+
+.sparkle {
+  position: relative;
+}
+
+.sparkle::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  background: radial-gradient(circle, #fbbf24 0%, transparent 70%);
+  animation: sparkle-pulse 0.8s ease-in-out;
+  z-index: -1;
+}
+
+@keyframes sparkle-pulse {
+  0% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
