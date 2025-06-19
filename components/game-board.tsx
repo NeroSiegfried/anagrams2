@@ -71,6 +71,9 @@ export function GameBoard({
   const currentWordRef = useRef<string[]>([]);
   useEffect(() => { currentWordRef.current = currentWord; }, [currentWord]);
 
+  // Add this near the top, after state declarations:
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+
   // Initialize audio generator
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -361,6 +364,12 @@ export function GameBoard({
     localStorage.setItem(`anagramsScrambledLetters_${gameState.baseWord}`, JSON.stringify(shuffled))
     console.log('[Anagrams] User shuffled, saving new order to localStorage:', shuffled)
     clearCurrentWord()
+    // Shift focus to submit button after DOM updates, only if enabled
+    setTimeout(() => {
+      if (submitButtonRef.current && !submitButtonRef.current.disabled) {
+        submitButtonRef.current.focus()
+      }
+    }, 0)
   }
 
   // After every entry, restore the order from localStorage
@@ -428,6 +437,8 @@ export function GameBoard({
       }
       // Enter
       else if (e.key === "Enter") {
+        // Prevent double submit if submit button is focused
+        if (document.activeElement === submitButtonRef.current) return;
         submitWord();
       }
     };
@@ -576,9 +587,9 @@ export function GameBoard({
               </button>
 
               <button
+                ref={submitButtonRef}
                 className="wood-button px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-amber-900"
                 onClick={() => submitWord()}
-                disabled={gameState.timeLeft <= 0 || currentWord.length < 3}
               >
                 Submit
               </button>

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
@@ -20,6 +20,7 @@ export function Navbar({ onSettingsClick }: NavbarProps) {
   const [showLogin, setShowLogin] = useState(false)
   const [showSignup, setShowSignup] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const router = useRouter()
 
   const isActive = (path: string) => {
     return pathname === path
@@ -31,8 +32,8 @@ export function Navbar({ onSettingsClick }: NavbarProps) {
     if (isInGame && onSettingsClick) {
       onSettingsClick()
     } else {
-      // Navigate to settings page
-      window.location.href = "/settings"
+      // Navigate to settings page (client-side)
+      router.push("/settings")
     }
   }
 
