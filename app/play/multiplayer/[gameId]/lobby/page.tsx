@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth-context'
 import { toast } from '@/hooks/use-toast'
 import { Navbar } from '@/components/navbar'
-import { Copy, Play, Users, Crown, LogOut } from 'lucide-react'
+import { Copy, Play, Users, Crown, LogOut, Settings } from 'lucide-react'
 
 interface Player {
   id: string
@@ -49,6 +51,13 @@ export default function GameLobbyPage() {
   const [gameStarted, setGameStarted] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [allPlayersReady, setAllPlayersReady] = useState(false)
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [settings, setSettings] = useState({
+    timeLimit: 120,
+    maxPlayers: 4,
+    wordLength: 6
+  })
+  const [updatingSettings, setUpdatingSettings] = useState(false)
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
@@ -68,6 +77,10 @@ export default function GameLobbyPage() {
       const data = await response.json()
       
       if (response.ok) {
+        console.log('[Lobby] Fetched game data:', {
+          timeLimit: data.game.time_limit,
+          maxPlayers: data.game.max_players
+        })
         setGame(data.game)
         
         // Check if game has started
@@ -117,6 +130,21 @@ export default function GameLobbyPage() {
       setAllPlayersReady(allReady)
     }
   }, [game])
+
+  // Update settings state when game data changes
+  useEffect(() => {
+    if (game) {
+      console.log('[Lobby] Updating settings from game data:', {
+        timeLimit: game.time_limit,
+        maxPlayers: game.max_players
+      })
+      setSettings({
+        timeLimit: game.time_limit,
+        maxPlayers: game.max_players,
+        wordLength: game.base_word.length
+      })
+    }
+  }, [game?.time_limit, game?.max_players, game?.base_word])
 
   // Mark player as ready
   const markReady = async () => {
@@ -199,6 +227,55 @@ export default function GameLobbyPage() {
         description: "Failed to mark unready",
         variant: "destructive",
       })
+    }
+  }
+
+  // Update game settings
+  const updateSettings = async () => {
+    if (!user || !game) return
+
+    console.log('[Lobby] Updating settings:', settings)
+    setUpdatingSettings(true)
+    try {
+      const response = await fetch(`/api/games/${gameId}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId: user.id,
+          timeLimit: settings.timeLimit,
+          maxPlayers: settings.maxPlayers,
+          wordLength: settings.wordLength
+        })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        console.log('[Lobby] Settings updated successfully')
+        toast({
+          title: "Settings updated!",
+          description: "Game settings have been updated successfully.",
+        })
+        setSettingsModalOpen(false)
+        // Refresh lobby info to get updated settings
+        fetchLobbyInfo()
+      } else {
+        console.error('[Lobby] Failed to update settings:', data.error)
+        toast({
+          title: "Failed to update settings",
+          description: data.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error updating settings:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update settings",
+        variant: "destructive",
+      })
+    } finally {
+      setUpdatingSettings(false)
     }
   }
 
@@ -393,15 +470,111 @@ export default function GameLobbyPage() {
                     {game.player_count}/{game.max_players} Players
                   </span>
                 </div>
-                <Button
-                  onClick={copyGameCode}
-                  variant="outline"
-                  size="sm"
-                  className="text-amber-300 border-amber-600 hover:bg-amber-600/20"
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  {copied ? 'Copied!' : 'Copy Code'}
-                </Button>
+                <div className="flex items-center space-x-2">
+                  {isHost && game.status === 'waiting' && (
+                    <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-amber-300 border-amber-600 hover:bg-amber-600/20"
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          Settings
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-green-800 border-green-600">
+                        <DialogHeader>
+                          <DialogTitle className="text-amber-100">Game Settings</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="timeLimit" className="text-amber-200">
+                              Time Limit
+                            </Label>
+                            <select
+                              id="timeLimit"
+                              value={settings.timeLimit}
+                              onChange={(e) => setSettings(prev => ({ ...prev, timeLimit: parseInt(e.target.value) || 120 }))}
+                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
+                            >
+                              <option value={60}>60 seconds</option>
+                              <option value={90}>90 seconds</option>
+                              <option value={120}>2 minutes</option>
+                              <option value={180}>3 minutes</option>
+                              <option value={300}>5 minutes</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label htmlFor="maxPlayers" className="text-amber-200">
+                              Max Players
+                            </Label>
+                            <select
+                              id="maxPlayers"
+                              value={settings.maxPlayers}
+                              onChange={(e) => setSettings(prev => ({ ...prev, maxPlayers: parseInt(e.target.value) || 4 }))}
+                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
+                            >
+                              <option value={2}>2 players</option>
+                              <option value={3}>3 players</option>
+                              <option value={4}>4 players</option>
+                              <option value={5}>5 players</option>
+                              <option value={6}>6 players</option>
+                              <option value={7}>7 players</option>
+                              <option value={8}>8 players</option>
+                            </select>
+                            <p className="text-xs text-gray-400 mt-1">
+                              Currently {game?.player_count || 0} players
+                            </p>
+                          </div>
+                          <div>
+                            <Label htmlFor="wordLength" className="text-amber-200">
+                              Word Length
+                            </Label>
+                            <select
+                              id="wordLength"
+                              value={settings.wordLength}
+                              onChange={(e) => setSettings(prev => ({ ...prev, wordLength: parseInt(e.target.value) || 6 }))}
+                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
+                            >
+                              <option value={5}>5 letters</option>
+                              <option value={6}>6 letters</option>
+                              <option value={7}>7 letters</option>
+                              <option value={8}>8 letters</option>
+                              <option value={9}>9 letters</option>
+                              <option value={10}>10 letters</option>
+                            </select>
+                          </div>
+                          <div className="flex justify-end space-x-2 pt-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => setSettingsModalOpen(false)}
+                              className="border-green-600 text-amber-200 hover:bg-green-700"
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={updateSettings}
+                              disabled={updatingSettings}
+                              className="bg-amber-600 hover:bg-amber-700 text-white"
+                            >
+                              {updatingSettings ? 'Updating...' : 'Update Settings'}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                  <Button
+                    onClick={copyGameCode}
+                    variant="outline"
+                    size="sm"
+                    className="text-amber-300 border-amber-600 hover:bg-amber-600/20"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    {copied ? 'Copied!' : 'Copy Code'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

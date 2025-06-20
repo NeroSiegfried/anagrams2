@@ -281,12 +281,12 @@ export function MultiplayerLobby() {
                 onChange={(e) => setWordLength(Number(e.target.value))}
                 className="w-full p-2 rounded bg-green-800 border border-green-600 text-amber-100"
               >
-                <option value={3}>3 letters</option>
-                <option value={4}>4 letters</option>
                 <option value={5}>5 letters</option>
                 <option value={6}>6 letters</option>
                 <option value={7}>7 letters</option>
                 <option value={8}>8 letters</option>
+                <option value={9}>9 letters</option>
+                <option value={10}>10 letters</option>
               </select>
             </div>
             
