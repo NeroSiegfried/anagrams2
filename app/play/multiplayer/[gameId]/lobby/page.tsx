@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context'
 import { toast } from '@/hooks/use-toast'
 import { Navbar } from '@/components/navbar'
 import { Copy, Play, Users, Crown, LogOut, Settings } from 'lucide-react'
+import { GameSettingsForm } from '@/components/game-settings-form'
 
 interface Player {
   id: string
@@ -487,80 +488,23 @@ export default function GameLobbyPage() {
                         <DialogHeader>
                           <DialogTitle className="text-amber-100">Game Settings</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="timeLimit" className="text-amber-200">
-                              Time Limit
-                            </Label>
-                            <select
-                              id="timeLimit"
-                              value={settings.timeLimit}
-                              onChange={(e) => setSettings(prev => ({ ...prev, timeLimit: parseInt(e.target.value) || 120 }))}
-                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
-                            >
-                              <option value={60}>60 seconds</option>
-                              <option value={90}>90 seconds</option>
-                              <option value={120}>2 minutes</option>
-                              <option value={180}>3 minutes</option>
-                              <option value={300}>5 minutes</option>
-                            </select>
-                          </div>
-                          <div>
-                            <Label htmlFor="maxPlayers" className="text-amber-200">
-                              Max Players
-                            </Label>
-                            <select
-                              id="maxPlayers"
-                              value={settings.maxPlayers}
-                              onChange={(e) => setSettings(prev => ({ ...prev, maxPlayers: parseInt(e.target.value) || 4 }))}
-                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
-                            >
-                              <option value={2}>2 players</option>
-                              <option value={3}>3 players</option>
-                              <option value={4}>4 players</option>
-                              <option value={5}>5 players</option>
-                              <option value={6}>6 players</option>
-                              <option value={7}>7 players</option>
-                              <option value={8}>8 players</option>
-                            </select>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Currently {game?.player_count || 0} players
-                            </p>
-                          </div>
-                          <div>
-                            <Label htmlFor="wordLength" className="text-amber-200">
-                              Word Length
-                            </Label>
-                            <select
-                              id="wordLength"
-                              value={settings.wordLength}
-                              onChange={(e) => setSettings(prev => ({ ...prev, wordLength: parseInt(e.target.value) || 6 }))}
-                              className="w-full p-2 rounded bg-green-700 border border-green-600 text-amber-100"
-                            >
-                              <option value={5}>5 letters</option>
-                              <option value={6}>6 letters</option>
-                              <option value={7}>7 letters</option>
-                              <option value={8}>8 letters</option>
-                              <option value={9}>9 letters</option>
-                              <option value={10}>10 letters</option>
-                            </select>
-                          </div>
-                          <div className="flex justify-end space-x-2 pt-4">
-                            <Button
-                              variant="outline"
-                              onClick={() => setSettingsModalOpen(false)}
-                              className="border-green-600 text-amber-200 hover:bg-green-700"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              onClick={updateSettings}
-                              disabled={updatingSettings}
-                              className="bg-amber-600 hover:bg-amber-700 text-white"
-                            >
-                              {updatingSettings ? 'Updating...' : 'Update Settings'}
-                            </Button>
-                          </div>
+                        <GameSettingsForm
+                          settings={settings}
+                          onChange={setSettings}
+                          disabled={updatingSettings}
+                          onSubmit={updateSettings}
+                          showSubmit={true}
+                          updating={updatingSettings}
+                        />
+                        <div className="flex justify-end space-x-2 pt-4">
+                          <Button
+                            variant="outline"
+                            onClick={() => setSettingsModalOpen(false)}
+                            className="border-green-600 text-amber-200 hover:bg-green-700"
+                            disabled={updatingSettings}
+                          >
+                            Cancel
+                          </Button>
                         </div>
                       </DialogContent>
                     </Dialog>
