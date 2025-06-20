@@ -60,6 +60,8 @@ export default function GameLobbyPage() {
   })
   const [updatingSettings, setUpdatingSettings] = useState(false)
   const [kickingPlayer, setKickingPlayer] = useState<string | null>(null)
+  const [hasJoined, setHasJoined] = useState(false)
+  const [joinAttempted, setJoinAttempted] = useState(false)
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
@@ -71,6 +73,55 @@ export default function GameLobbyPage() {
     // Fallback to user ID (shouldn't happen)
     return player.user_id;
   };
+
+  // Join the game automatically when accessing via URL
+  const joinGame = async () => {
+    if (!user || !gameId || joinAttempted) return
+
+    setJoinAttempted(true)
+    try {
+      const response = await fetch('/api/games/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: gameId,
+          userId: user.id,
+          username: user.username || user.displayName || user.id
+        })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        setHasJoined(true)
+        if (data.rejoined) {
+          console.log('[Lobby] Rejoined existing game')
+        } else {
+          console.log('[Lobby] Successfully joined game')
+          toast({
+            title: "Joined game!",
+            description: "You've successfully joined the lobby",
+          })
+        }
+      } else {
+        console.error('[Lobby] Failed to join game:', data.error)
+        toast({
+          title: "Failed to join game",
+          description: data.error,
+          variant: "destructive",
+        })
+        router.push('/play/multiplayer')
+      }
+    } catch (error) {
+      console.error('[Lobby] Error joining game:', error)
+      toast({
+        title: "Error",
+        description: "Failed to join game",
+        variant: "destructive",
+      })
+      router.push('/play/multiplayer')
+    }
+  }
 
   // Fetch game lobby info
   const fetchLobbyInfo = async () => {
@@ -84,6 +135,13 @@ export default function GameLobbyPage() {
           maxPlayers: data.game.max_players
         })
         setGame(data.game)
+        
+        // Check if current user is in the game
+        const currentPlayer = data.game.game_players?.find((p: Player) => p.user_id === user?.id)
+        if (currentPlayer) {
+          setHasJoined(true)
+          setReady(currentPlayer.ready)
+        }
         
         // Check if game has started
         if (data.game.status === 'active' && data.game.started_at) {
@@ -114,13 +172,24 @@ export default function GameLobbyPage() {
     }
   }
 
+  // Initial setup: join game and fetch lobby info
   useEffect(() => {
-    if (gameId) {
-      fetchLobbyInfo()
+    if (gameId && user) {
+      // First try to join the game
+      joinGame().then(() => {
+        // Then fetch lobby info
+        fetchLobbyInfo()
+      })
+    }
+  }, [gameId, user])
+
+  // Polling for lobby updates (only after joining)
+  useEffect(() => {
+    if (gameId && hasJoined) {
       const interval = setInterval(fetchLobbyInfo, 2000) // Refresh every 2 seconds
       return () => clearInterval(interval)
     }
-  }, [gameId])
+  }, [gameId, hasJoined])
 
   useEffect(() => {
     if (game && game.game_players) {
@@ -202,9 +271,9 @@ export default function GameLobbyPage() {
 
     try {
       const response = await fetch(`/api/games/${gameId}/ready`, {
-        method: 'DELETE',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
+        body: JSON.stringify({ userId: user.id, ready: false })
       })
 
       const data = await response.json()
@@ -213,7 +282,7 @@ export default function GameLobbyPage() {
         setReady(false)
         toast({
           title: "Not ready",
-          description: "You can mark yourself ready again when you're prepared.",
+          description: "You're no longer ready",
         })
       } else {
         toast({
@@ -236,13 +305,12 @@ export default function GameLobbyPage() {
   const updateSettings = async () => {
     if (!user || !game) return
 
-    console.log('[Lobby] Updating settings:', settings)
     setUpdatingSettings(true)
     try {
       const response = await fetch(`/api/games/${gameId}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           userId: user.id,
           timeLimit: settings.timeLimit,
           maxPlayers: settings.maxPlayers,
@@ -253,16 +321,14 @@ export default function GameLobbyPage() {
       const data = await response.json()
       
       if (response.ok) {
-        console.log('[Lobby] Settings updated successfully')
         toast({
-          title: "Settings updated!",
-          description: "Game settings have been updated successfully.",
+          title: "Settings updated",
+          description: "Game settings have been updated",
         })
         setSettingsModalOpen(false)
-        // Refresh lobby info to get updated settings
+        // Refresh lobby info to get updated data
         fetchLobbyInfo()
       } else {
-        console.error('[Lobby] Failed to update settings:', data.error)
         toast({
           title: "Failed to update settings",
           description: data.error,
@@ -281,7 +347,7 @@ export default function GameLobbyPage() {
     }
   }
 
-  // Start the game (host only)
+  // Start the game
   const startGame = async () => {
     if (!user || !game) return
 
@@ -296,11 +362,14 @@ export default function GameLobbyPage() {
       const data = await response.json()
       
       if (response.ok) {
+        setGameStarted(true)
         toast({
-          title: "Game initiated!",
-          description: "Waiting for all players to be ready...",
+          title: "Game starting!",
+          description: "Redirecting to game...",
         })
-        // The game will start automatically when all players are ready
+        setTimeout(() => {
+          router.push(`/play/multiplayer/${gameId}`)
+        }, 1000)
       } else {
         toast({
           title: "Failed to start game",
@@ -320,53 +389,53 @@ export default function GameLobbyPage() {
     }
   }
 
+  // Handle starting a new round after game is finished
   const handleStartNewRound = async () => {
-    if (!user || !game) return;
+    if (!user || !game) return
 
-    setStarting(true);
     try {
       const response = await fetch(`/api/games/${gameId}/new-round`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
-      });
+        body: JSON.stringify({ userId: user.id })
+      })
 
-      const data = await response.json();
-
+      const data = await response.json()
+      
       if (response.ok) {
         toast({
-          title: "New round created!",
-          description: "Get ready...",
-        });
-        // The fetchLobbyInfo poll will handle updating the UI to the new 'waiting' state
+          title: "New round starting!",
+          description: "Redirecting to game...",
+        })
+        setTimeout(() => {
+          router.push(`/play/multiplayer/${gameId}`)
+        }, 1000)
       } else {
         toast({
-          title: 'Failed to start new round',
+          title: "Failed to start new round",
           description: data.error,
-          variant: 'destructive',
-        });
+          variant: "destructive",
+        })
       }
     } catch (error) {
-      console.error('Error starting new round:', error);
+      console.error('Error starting new round:', error)
       toast({
-        title: 'Error',
-        description: 'Failed to start new round',
-        variant: 'destructive',
-      });
-    } finally {
-      setStarting(false);
+        title: "Error",
+        description: "Failed to start new round",
+        variant: "destructive",
+      })
     }
-  };
+  }
 
-  // Copy game code
+  // Copy game code to clipboard
   const copyGameCode = () => {
     navigator.clipboard.writeText(gameId)
     setCopied(true)
-    toast({
-      title: "Copied!",
-      description: "Game code copied to clipboard",
-    })
     setTimeout(() => setCopied(false), 2000)
+    toast({
+      title: "Game code copied!",
+      description: "Share this code with friends to join",
+    })
   }
 
   // Leave game
@@ -411,10 +480,12 @@ export default function GameLobbyPage() {
   // Check if current user is host
   const isHost = game?.created_by === user?.id;
 
-  // Automatic exit: call leave API on unload or navigation
+  // Automatic exit: call leave API on unload or navigation with 10-second grace period
   useEffect(() => {
-    if (!user || !gameId) return;
+    if (!user || !gameId || !hasJoined) return;
+    
     const hasLeftRef = { current: false };
+    let gracePeriodTimeout: NodeJS.Timeout | null = null;
 
     const leaveWithBeacon = () => {
       if (hasLeftRef.current) return;
@@ -453,13 +524,25 @@ export default function GameLobbyPage() {
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       console.log('[Lobby] beforeunload event triggered');
-      leaveWithBeacon();
+      // Start grace period
+      gracePeriodTimeout = setTimeout(() => {
+        leaveWithBeacon();
+      }, 10000); // 10 second grace period
     };
     
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         console.log('[Lobby] visibilitychange to hidden');
-        leaveWithBeacon();
+        // Start grace period
+        gracePeriodTimeout = setTimeout(() => {
+          leaveWithBeacon();
+        }, 10000); // 10 second grace period
+      } else {
+        // Page became visible again, cancel the grace period
+        if (gracePeriodTimeout) {
+          clearTimeout(gracePeriodTimeout);
+          gracePeriodTimeout = null;
+        }
       }
     };
 
@@ -470,9 +553,12 @@ export default function GameLobbyPage() {
       console.log('[Lobby] Cleanup: removing event listeners');
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (gracePeriodTimeout) {
+        clearTimeout(gracePeriodTimeout);
+      }
       // Do NOT call leaveWithBeacon here; only call on actual unload/navigation
     };
-  }, [user, gameId]);
+  }, [user, gameId, hasJoined]);
 
   // Kick a player from the game
   const kickPlayer = async (targetUserId: string) => {
@@ -549,6 +635,21 @@ export default function GameLobbyPage() {
     )
   }
 
+  // If user hasn't joined yet, show joining message
+  if (!hasJoined) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen flex items-center justify-center bg-green-900">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-300 mx-auto mb-4"></div>
+            <p className="text-amber-200">Joining game...</p>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <Navbar />
@@ -567,69 +668,36 @@ export default function GameLobbyPage() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-amber-200">Word Length:</p>
-                  <p className="text-2xl font-bold text-amber-300">{game.base_word.length} letters</p>
+                  <p className="text-amber-200 text-sm">Game Code</p>
+                  <p className="text-amber-100 font-mono text-lg">{gameId}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-amber-200">Time Limit:</p>
-                  <p className="text-xl font-bold text-amber-300">{game.time_limit}s</p>
-                </div>
+                <Button
+                  onClick={copyGameCode}
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-300 text-amber-300 hover:bg-amber-300 hover:text-green-900"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  {copied ? 'Copied!' : 'Copy'}
+                </Button>
               </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-amber-300" />
-                  <span className="text-amber-200">
-                    {game.player_count}/{game.max_players} Players
-                  </span>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-amber-200">Time Limit</p>
+                  <p className="text-amber-100">{game.time_limit}s</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {isHost && game.status === 'waiting' && (
-                    <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-amber-300 border-amber-600 hover:bg-amber-600/20"
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          Settings
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-green-800 border-green-600">
-                        <DialogHeader>
-                          <DialogTitle className="text-amber-100">Game Settings</DialogTitle>
-                        </DialogHeader>
-                        <GameSettingsForm
-                          settings={settings}
-                          onChange={setSettings}
-                          disabled={updatingSettings}
-                          onSubmit={updateSettings}
-                          showSubmit={true}
-                          updating={updatingSettings}
-                        />
-                        <div className="flex justify-end space-x-2 pt-4">
-                          <Button
-                            variant="outline"
-                            onClick={() => setSettingsModalOpen(false)}
-                            className="border-green-600 text-amber-200 hover:bg-green-700"
-                            disabled={updatingSettings}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
-                  <Button
-                    onClick={copyGameCode}
-                    variant="outline"
-                    size="sm"
-                    className="text-amber-300 border-amber-600 hover:bg-amber-600/20"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    {copied ? 'Copied!' : 'Copy Code'}
-                  </Button>
+                <div>
+                  <p className="text-amber-200">Max Players</p>
+                  <p className="text-amber-100">{game.max_players}</p>
+                </div>
+                <div>
+                  <p className="text-amber-200">Word Length</p>
+                  <p className="text-amber-100">{game.base_word.length} letters</p>
+                </div>
+                <div>
+                  <p className="text-amber-200">Players</p>
+                  <p className="text-amber-100">{game.player_count}/{game.max_players}</p>
                 </div>
               </div>
             </CardContent>
@@ -638,47 +706,74 @@ export default function GameLobbyPage() {
           {/* Players List */}
           <Card className="score-card">
             <CardHeader>
-              <CardTitle className="text-amber-100">Players</CardTitle>
+              <CardTitle className="text-amber-100 flex items-center justify-between">
+                <span className="flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Players ({game.player_count}/{game.max_players})
+                </span>
+                {isHost && (
+                  <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-300 text-amber-300 hover:bg-amber-300 hover:text-green-900"
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Settings
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-green-800 border-amber-300">
+                      <DialogHeader>
+                        <DialogTitle className="text-amber-100">Game Settings</DialogTitle>
+                      </DialogHeader>
+                      <GameSettingsForm
+                        settings={settings}
+                        onChange={setSettings}
+                        onSubmit={updateSettings}
+                        disabled={updatingSettings}
+                        showSubmit={true}
+                        updating={updatingSettings}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {game.game_players?.map((player) => (
                   <div
                     key={player.id}
-                    className="flex items-center justify-between p-3 felt-pattern rounded-lg"
+                    className="flex items-center justify-between p-3 bg-green-800 rounded-lg border border-amber-300/20"
                   >
                     <div className="flex items-center space-x-3">
-                      {player.is_host && (
-                        <Crown className="h-4 w-4 text-amber-300" />
-                      )}
-                      <span className="font-semibold text-amber-100">
+                      {player.is_host && <Crown className="h-4 w-4 text-amber-300" />}
+                      <span className="text-amber-100 font-medium">
                         {getProperUsername(player)}
                       </span>
                       {player.is_host && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="secondary" className="text-xs">
                           Host
                         </Badge>
                       )}
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-amber-300 font-bold">
-                        {player.score} pts
-                      </span>
-                      {(player.ready || player.is_host) && (
-                        <Badge variant="default" className="bg-green-600 text-white">
+                      {player.ready && (
+                        <Badge variant="default" className="text-xs bg-green-600">
                           Ready
                         </Badge>
                       )}
-                      {isHost && !player.is_host && game.status === 'waiting' && (
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {isHost && !player.is_host && (
                         <Button
+                          onClick={() => kickPlayer(player.user_id)}
                           variant="outline"
                           size="sm"
-                          onClick={() => kickPlayer(player.user_id)}
                           disabled={kickingPlayer === player.user_id}
-                          className="text-red-400 border-red-600 hover:bg-red-600/20 h-8 px-2"
+                          className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white"
                         >
                           {kickingPlayer === player.user_id ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b border-red-400"></div>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b border-current" />
                           ) : (
                             <X className="h-3 w-3" />
                           )}
@@ -691,77 +786,95 @@ export default function GameLobbyPage() {
             </CardContent>
           </Card>
 
-          {/* Game Start Buttons */}
-          <Card className="score-card">
-            <CardHeader>
-              <CardTitle className="text-amber-100">Game Start</CardTitle>
-            </CardHeader>
-            <CardContent className="mt-4">
-              {game.status === 'waiting' && (
-                <>
-                  <p className="text-center text-gray-400 mb-6">
-                    Waiting for players to join and get ready. The host will start the game.
-                  </p>
-                  {isHost ? (
-                    <Button 
-                      onClick={startGame} 
-                      disabled={starting || gameStarted || !allPlayersReady} 
-                      className="w-full text-lg py-6"
+          {/* Game Status */}
+          {game.status === 'finished' && (
+            <Card className="score-card">
+              <CardHeader>
+                <CardTitle className="text-amber-100">Game Finished</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-amber-200 mb-4">The game has ended. Start a new round or leave the lobby.</p>
+                <div className="flex space-x-3">
+                  {isHost && (
+                    <Button
+                      onClick={handleStartNewRound}
+                      className="bg-amber-500 hover:bg-amber-600 text-green-900"
                     >
-                      <Play className="mr-2 h-5 w-5" /> 
-                      {starting ? 'Starting...' : (allPlayersReady ? 'Start Game' : 'Waiting for players...')}
-                    </Button>
-                  ) : (
-                    <Button 
-                      onClick={ready ? markUnready : markReady} 
-                      disabled={gameStarted} 
-                      className="w-full text-lg py-6"
-                    >
-                      {ready ? 'Mark as Unready' : 'I am Ready!'}
+                      <Play className="h-4 w-4 mr-2" />
+                      Start New Round
                     </Button>
                   )}
-                </>
-              )}
+                  <Button
+                    onClick={leaveGame}
+                    variant="outline"
+                    disabled={leaving}
+                    className="border-amber-300 text-amber-300 hover:bg-amber-300 hover:text-green-900"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    {leaving ? 'Leaving...' : 'Leave Game'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-              {game.status === 'finished' && (
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-yellow-400 mb-4">Round Over!</h3>
-                  <p className="text-gray-400 mb-6">
-                    Final scores are in. The host can start the next round.
-                  </p>
+          {/* Ready/Start Controls */}
+          {game.status === 'waiting' && (
+            <Card className="score-card">
+              <CardContent className="pt-6">
+                <div className="flex flex-col space-y-3">
+                  {/* Host controls */}
                   {isHost ? (
-                    <Button onClick={handleStartNewRound} disabled={starting} className="w-full text-lg py-6">
-                      <Play className="mr-2 h-5 w-5" /> {starting ? 'Starting...' : 'Start Next Round'}
-                    </Button>
+                    <>
+                      <Button
+                        onClick={startGame}
+                        disabled={!allPlayersReady || starting}
+                        className="bg-amber-500 hover:bg-amber-600 text-green-900 disabled:opacity-50"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        {starting ? 'Starting...' : 'Start Game'}
+                      </Button>
+                      {!allPlayersReady && (
+                        <p className="text-amber-200 text-sm text-center">
+                          Waiting for all players to be ready...
+                        </p>
+                      )}
+                    </>
                   ) : (
-                    <p className="text-lg text-gray-300 p-4 bg-gray-800/50 rounded-lg">
-                      Waiting for the host to start the next round...
-                    </p>
+                    /* Non-host controls */
+                    <>
+                      {ready ? (
+                        <Button
+                          onClick={markUnready}
+                          variant="outline"
+                          className="border-amber-300 text-amber-300 hover:bg-amber-300 hover:text-green-900"
+                        >
+                          Not Ready
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={markReady}
+                          className="bg-amber-500 hover:bg-amber-600 text-green-900"
+                        >
+                          Ready
+                        </Button>
+                      )}
+                    </>
                   )}
+                  
+                  <Button
+                    onClick={leaveGame}
+                    variant="outline"
+                    disabled={leaving}
+                    className="border-amber-300 text-amber-300 hover:bg-amber-300 hover:text-green-900"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    {leaving ? 'Leaving...' : 'Leave Game'}
+                  </Button>
                 </div>
-              )}
-
-              {game.status === 'active' && (
-                <div className="text-center">
-                  <p className="text-lg text-green-400 animate-pulse">Game in progress...</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Leave Game Button */}
-          <div className="text-center">
-            <Button
-              onClick={leaveGame}
-              disabled={leaving}
-              variant="outline"
-              size="lg"
-              className="text-red-300 border-red-600 hover:bg-red-600/20 px-8 py-4"
-            >
-              <LogOut className="h-5 w-5 mr-2" />
-              {leaving ? 'Leaving...' : 'Leave Game'}
-            </Button>
-          </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </>

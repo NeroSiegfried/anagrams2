@@ -75,10 +75,11 @@ export function GameBoard({
   // Add this near the top, after state declarations:
   const submitButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Automatic exit for multiplayer games
+  // Automatic exit: call leave API on unload or navigation with 10-second grace period
   useEffect(() => {
     if (!multiplayer || !user || !gameId) return;
     const hasLeftRef = { current: false };
+    let gracePeriodTimeout: NodeJS.Timeout | null = null;
 
     const leaveWithBeacon = () => {
       if (hasLeftRef.current) return;
@@ -117,13 +118,25 @@ export function GameBoard({
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       console.log('[GameBoard] beforeunload event triggered');
-      leaveWithBeacon();
+      // Start grace period
+      gracePeriodTimeout = setTimeout(() => {
+        leaveWithBeacon();
+      }, 10000); // 10 second grace period
     };
     
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         console.log('[GameBoard] visibilitychange to hidden');
-        leaveWithBeacon();
+        // Start grace period
+        gracePeriodTimeout = setTimeout(() => {
+          leaveWithBeacon();
+        }, 10000); // 10 second grace period
+      } else {
+        // Page became visible again, cancel the grace period
+        if (gracePeriodTimeout) {
+          clearTimeout(gracePeriodTimeout);
+          gracePeriodTimeout = null;
+        }
       }
     };
 
@@ -134,6 +147,9 @@ export function GameBoard({
       console.log('[GameBoard] Cleanup: removing event listeners');
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (gracePeriodTimeout) {
+        clearTimeout(gracePeriodTimeout);
+      }
       // Do NOT call leaveWithBeacon here; only call on actual unload/navigation
     };
   }, [multiplayer, user, gameId]);
