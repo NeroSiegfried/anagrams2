@@ -3,7 +3,7 @@ import { query } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
-    const { isPublic, createdBy, wordLength = 6, timeLimit = 120 } = await request.json()
+    const { isPublic, createdBy, wordLength = 6, timeLimit = 120, username } = await request.json()
 
     if (typeof isPublic !== 'boolean' || !createdBy) {
       return NextResponse.json(
@@ -11,6 +11,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Ensure username is not undefined
+    const playerUsername = username || createdBy;
+
+    console.log('[Create Game API] Creating game with:', { isPublic, createdBy, wordLength, timeLimit, username: playerUsername });
 
     // Get a random word of the specified length
     let wordResult
@@ -67,7 +72,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO game_players (game_id, user_id, username, score, is_host)
          VALUES ($1, $2, $3, $4, $5)`,
-        [game.id, createdBy, createdBy, 0, true]
+        [game.id, createdBy, playerUsername, 0, true]
       )
     } catch (error) {
       console.error('Error adding player to game:', error)

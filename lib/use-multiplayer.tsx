@@ -76,15 +76,18 @@ export function useMultiplayer(gameId?: string, isMultiplayer = false) {
     // Initial poll
     pollGameState()
     
-    // Set up polling interval (every 2 seconds)
-    pollingIntervalRef.current = setInterval(pollGameState, 2000)
+    // Only set up polling if game is active
+    if (gameStatus === 'active' || gameStatus === 'waiting') {
+      // Set up polling interval (every 2 seconds)
+      pollingIntervalRef.current = setInterval(pollGameState, 2000)
+    }
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
       }
     }
-  }, [isMultiplayer, gameId, user?.id])
+  }, [isMultiplayer, gameId, user?.id, gameStatus])
 
   // Send word to server
   const sendWordToServer = async (word: string, score: number) => {

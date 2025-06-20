@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth-context'
 import { toast } from '@/hooks/use-toast'
 import { Navbar } from '@/components/navbar'
-import { Copy, Play, Users, Crown } from 'lucide-react'
+import { Copy, Play, Users, Crown, LogOut } from 'lucide-react'
 
 interface Player {
   id: string
@@ -23,6 +23,7 @@ interface Game {
   id: string
   base_word: string
   created_by: string
+  creator_username?: string
   status: string
   current_round: number
   time_limit: number
@@ -46,6 +47,18 @@ export default function GameLobbyPage() {
   const [copied, setCopied] = useState(false)
   const [ready, setReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+
+  // Helper function to get a proper username
+  const getProperUsername = (player: Player) => {
+    // Use username if it's not a UUID
+    if (player.username && !player.username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      return player.username;
+    }
+    
+    // Fallback to user ID (shouldn't happen)
+    return player.user_id;
+  };
 
   // Fetch game lobby info
   const fetchLobbyInfo = async () => {
@@ -191,6 +204,45 @@ export default function GameLobbyPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Leave game
+  const leaveGame = async () => {
+    if (!user) return
+
+    setLeaving(true)
+    try {
+      const response = await fetch(`/api/games/${gameId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast({
+          title: "Left game",
+          description: data.gameDeleted ? "Game was deleted (no players left)" : "Successfully left the game",
+        })
+        router.push('/play/multiplayer')
+      } else {
+        toast({
+          title: "Failed to leave game",
+          description: data.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error leaving game:', error)
+      toast({
+        title: "Error",
+        description: "Failed to leave game",
+        variant: "destructive",
+      })
+    } finally {
+      setLeaving(false)
+    }
+  }
+
   // Check if current user is host
   const isHost = game?.game_players?.find(p => p.user_id === user?.id)?.is_host
 
@@ -285,7 +337,7 @@ export default function GameLobbyPage() {
                         <Crown className="h-4 w-4 text-amber-300" />
                       )}
                       <span className="font-semibold text-amber-100">
-                        {player.username}
+                        {getProperUsername(player)}
                       </span>
                       {player.is_host && (
                         <Badge variant="outline" className="text-xs">
@@ -377,6 +429,20 @@ export default function GameLobbyPage() {
               </div>
             </div>
           )}
+
+          {/* Leave Game Button */}
+          <div className="text-center">
+            <Button
+              onClick={leaveGame}
+              disabled={leaving}
+              variant="outline"
+              size="lg"
+              className="text-red-300 border-red-600 hover:bg-red-600/20 px-8 py-4"
+            >
+              <LogOut className="h-5 w-5 mr-2" />
+              {leaving ? 'Leaving...' : 'Leave Game'}
+            </Button>
+          </div>
         </div>
       </div>
     </>

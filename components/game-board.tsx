@@ -150,10 +150,9 @@ export function GameBoard({
       return; // Prevent starting a new game after restoration
     }
 
-    // For multiplayer games, load the shared game state
-    if (multiplayer && gameId && !hasRestoredRef.current && !hasStartedNewGameRef.current) {
+    // For multiplayer games, always load the shared game state (even when rejoining)
+    if (multiplayer && gameId) {
       console.log('[GameBoard] Loading multiplayer game state for gameId:', gameId);
-      hasStartedNewGameRef.current = true;
       setLoading(true);
       
       // Fetch game details from the database
@@ -164,9 +163,12 @@ export function GameBoard({
             const game = data.game;
             console.log('[GameBoard] Loaded multiplayer game:', game);
             
+            // Only show the word if the game is active and has started
+            const isGameActive = game.status === 'active' && game.started_at !== null;
+            
             // Calculate time left based on started_at timestamp
             let timeLeft = game.time_limit || 120;
-            if (game.started_at) {
+            if (game.started_at && isGameActive) {
               const startTime = new Date(game.started_at).getTime();
               const now = Date.now();
               const elapsed = Math.floor((now - startTime) / 1000);
@@ -175,7 +177,7 @@ export function GameBoard({
             
             // Use the shared game state
             setGameState({
-              isActive: game.status === 'active' && game.started_at !== null,
+              isActive: isGameActive,
               letters: game.base_word.split(''),
               foundWords: [],
               score: 0,
@@ -185,6 +187,12 @@ export function GameBoard({
               gameId: game.id,
               currentLetterCount: game.base_word.length,
             });
+            
+            // Only reset game over state if the game is actually active
+            if (isGameActive) {
+              setShowGameOver(false);
+              setRestoringGameOver(false);
+            }
             
             setLoading(false);
             console.log('[GameBoard] Multiplayer game loaded successfully');
@@ -216,6 +224,75 @@ export function GameBoard({
       console.log('[GameBoard] Restoration already performed in this session or game already started, skipping new game');
     }
   }, [multiplayer, gameId]);
+
+  // Poll for multiplayer game state changes
+  useEffect(() => {
+    if (!multiplayer || !gameId) return;
+
+    const pollGameState = async () => {
+      try {
+        const response = await fetch(`/api/games/${gameId}/lobby`);
+        const data = await response.json();
+        
+        if (data.game) {
+          const game = data.game;
+          
+          // Don't update if we're showing game over modal or restoring game over state
+          if (showGameOver || restoringGameOver) {
+            console.log('[GameBoard] Game over modal is showing or restoring, skipping state update');
+            return;
+          }
+          
+          // Only update if the game state has actually changed
+          const isGameActive = game.status === 'active' && game.started_at !== null;
+          const currentIsActive = gameState.isActive;
+          const wordChanged = game.base_word !== gameState.baseWord;
+          const statusChanged = isGameActive !== currentIsActive;
+          
+          if (wordChanged || statusChanged) {
+            console.log('[GameBoard] Game state changed, updating:', game);
+            
+            // Calculate time left based on started_at timestamp
+            let timeLeft = game.time_limit || 120;
+            if (game.started_at && isGameActive) {
+              const startTime = new Date(game.started_at).getTime();
+              const now = Date.now();
+              const elapsed = Math.floor((now - startTime) / 1000);
+              timeLeft = Math.max(0, game.time_limit - elapsed);
+            }
+            
+            // Update game state
+            setGameState({
+              isActive: isGameActive,
+              letters: game.base_word.split(''),
+              foundWords: [],
+              score: 0,
+              timeLeft: timeLeft,
+              baseWord: game.base_word,
+              currentRound: game.current_round || 1,
+              gameId: game.id,
+              currentLetterCount: game.base_word.length,
+            });
+            
+            // Only reset game over state if transitioning to active
+            if (isGameActive && !currentIsActive) {
+              setShowGameOver(false);
+              setRestoringGameOver(false);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[GameBoard] Error polling game state:', error);
+      }
+    };
+
+    // Only poll if game is active and not showing game over modal or restoring
+    if (gameState.isActive && !showGameOver && !restoringGameOver) {
+      // Poll every 3 seconds
+      const interval = setInterval(pollGameState, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [multiplayer, gameId, gameState.baseWord, gameState.isActive, showGameOver, restoringGameOver]);
 
   // On new game, shuffle randomly and save to localStorage
   useEffect(() => {
@@ -468,19 +545,55 @@ export function GameBoard({
     window.location.href = '/';
   };
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = async () => {
     console.log('[GameBoard] handlePlayAgain called, clearing restoringGameOver and hasRestoredRef, starting new game');
+    console.log('[GameBoard] Current state - multiplayer:', multiplayer, 'gameId:', gameId, 'user:', user?.id);
     setShowGameOver(false);
     localStorage.removeItem('anagramsGameOverState');
     setRestoringGameOver(false);
     hasRestoredRef.current = false;
     hasStartedNewGameRef.current = false;
-    setLoading(true);
-    Promise.resolve(startNewGame()).then(() => {
-      setCurrentWord([]);
-      setSelectedIndices([]);
-      setLoading(false);
-    });
+    
+    if (multiplayer && gameId && user) {
+      // For multiplayer games, start a new round
+      console.log('[GameBoard] Multiplayer game over, starting new round');
+      try {
+        const response = await fetch(`/api/games/${gameId}/new-round`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id })
+        });
+
+        const data = await response.json();
+        console.log('[GameBoard] New round API response:', response.status, data);
+        
+        if (response.ok) {
+          console.log('[GameBoard] New round started:', data);
+          // The game board will automatically reload the new game state
+          // through the useEffect that watches for multiplayer games
+        } else {
+          console.error('[GameBoard] Failed to start new round:', data.error);
+          // Fallback to redirecting to lobby
+          router.push(`/play/multiplayer/${gameId}/lobby`);
+        }
+      } catch (error) {
+        console.error('[GameBoard] Error starting new round:', error);
+        // Fallback to redirecting to lobby
+        router.push(`/play/multiplayer/${gameId}/lobby`);
+      }
+    } else if (multiplayer && gameId) {
+      // For multiplayer games without user, redirect to lobby
+      console.log('[GameBoard] Multiplayer game over, redirecting to lobby');
+      router.push(`/play/multiplayer/${gameId}/lobby`);
+    } else {
+      // For single player games, start a new game
+      setLoading(true);
+      Promise.resolve(startNewGame()).then(() => {
+        setCurrentWord([]);
+        setSelectedIndices([]);
+        setLoading(false);
+      });
+    }
   };
 
   // Restore keyboard input effect at the top level:
@@ -516,7 +629,7 @@ export function GameBoard({
   }, [gameState.isActive, gameState.timeLeft, scrambledLetters, selectedIndices, currentWord, showSettings, submitWord]);
 
   useEffect(() => {
-    if (!gameState.isActive || gameState.timeLeft <= 0) return undefined;
+    if (!gameState.isActive || gameState.timeLeft <= 0 || showGameOver || restoringGameOver) return undefined;
     hasAutoSubmitted.current = false; // Reset for new round
     const timer = setInterval(() => {
       setGameState({ timeLeft: gameState.timeLeft - 1 });
@@ -524,11 +637,11 @@ export function GameBoard({
     return () => {
       clearInterval(timer);
     };
-  }, [gameState.isActive, gameState.timeLeft, setGameState]);
+  }, [gameState.isActive, gameState.timeLeft, setGameState, showGameOver, restoringGameOver]);
 
   useEffect(() => {
     // Auto-submit when timer reaches zero, only once per round
-    if (gameState.isActive && gameState.timeLeft === 0 && !hasAutoSubmitted.current) {
+    if (gameState.isActive && gameState.timeLeft === 0 && !hasAutoSubmitted.current && !showGameOver && !restoringGameOver) {
       hasAutoSubmitted.current = true;
       const wordToSubmit = currentWordRef.current.join("");
       if (wordToSubmit.length > 0) {
@@ -542,7 +655,7 @@ export function GameBoard({
         setShowGameOver(true);
       }
     }
-  }, [gameState.isActive, gameState.timeLeft, endGame, submitWord]);
+  }, [gameState.isActive, gameState.timeLeft, endGame, submitWord, showGameOver, restoringGameOver]);
 
   if (loading) {
     return (
@@ -775,6 +888,7 @@ export function GameBoard({
             <div className="fixed inset-0 bg-black/60 z-40" />
           </div>
         )}
+        {console.log('[GameBoard] Render - showGameOver:', showGameOver, 'restoringGameOver:', restoringGameOver, 'gameState.isActive:', gameState.isActive)}
       </div>
     </>
   )

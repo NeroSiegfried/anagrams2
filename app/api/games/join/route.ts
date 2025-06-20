@@ -4,6 +4,8 @@ import { query } from '@/lib/db'
 export async function POST(request: NextRequest) {
   try {
     const { gameId, userId, username } = await request.json()
+    
+    console.log('[Join API] Received join request:', { gameId, userId, username });
 
     if (!gameId || !userId || !username) {
       return NextResponse.json(
@@ -12,15 +14,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if game exists and is joinable
+    // Check if game exists
     const gameResult = await query(`
       SELECT * FROM games 
-      WHERE id = $1 AND status = 'waiting'
+      WHERE id = $1
     `, [gameId])
 
     if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
       return NextResponse.json(
-        { error: 'Game not found or not joinable' },
+        { error: 'Game not found' },
         { status: 404 }
       )
     }
@@ -29,13 +31,33 @@ export async function POST(request: NextRequest) {
 
     // Check if player is already in the game
     const existingPlayerResult = await query(`
-      SELECT id FROM game_players 
+      SELECT id, username FROM game_players 
       WHERE game_id = $1 AND user_id = $2
     `, [gameId, userId])
 
     if (existingPlayerResult && existingPlayerResult.rows && existingPlayerResult.rows.length > 0) {
+      // Player is already in the game, allow them to rejoin
+      const existingPlayer = existingPlayerResult.rows[0]
+      
+      // Update their username if it changed
+      if (existingPlayer.username !== username) {
+        await query(`
+          UPDATE game_players SET username = $1, updated_at = NOW()
+          WHERE game_id = $2 AND user_id = $3
+        `, [username, gameId, userId])
+      }
+      
+      return NextResponse.json({ 
+        success: true,
+        gameId: gameId,
+        rejoined: true
+      })
+    }
+
+    // New player joining - only allow if game is in 'waiting' status
+    if (game.status !== 'waiting') {
       return NextResponse.json(
-        { error: 'Player already in game' },
+        { error: 'Game has already started' },
         { status: 400 }
       )
     }
@@ -60,7 +82,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Add player to game
+    // Add new player to game
     try {
       await query(`
         INSERT INTO game_players (game_id, user_id, username, score, is_host)

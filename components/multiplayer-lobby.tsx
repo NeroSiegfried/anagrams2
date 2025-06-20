@@ -15,6 +15,7 @@ interface Game {
   id: string
   base_word: string
   created_by: string
+  creator_username?: string
   status: string
   current_round: number
   time_limit: number
@@ -41,6 +42,35 @@ export function MultiplayerLobby() {
   const [gameCode, setGameCode] = useState('')
   const [wordLength, setWordLength] = useState(6)
   const [timeLimit, setTimeLimit] = useState(120)
+
+  // Helper function to get a proper username
+  const getProperUsername = (user: any) => {
+    console.log('[MultiplayerLobby] Getting username for user:', user);
+    
+    // Use display name if available
+    if (user.displayName) {
+      console.log('[MultiplayerLobby] Using displayName:', user.displayName);
+      return user.displayName;
+    }
+    
+    // Use username if it's not a UUID
+    if (user.username && !user.username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      console.log('[MultiplayerLobby] Using username:', user.username);
+      return user.username;
+    }
+    
+    // Generate username from email
+    if (user.email) {
+      const emailPart = user.email.split('@')[0];
+      const generatedUsername = emailPart.charAt(0).toUpperCase() + emailPart.slice(1);
+      console.log('[MultiplayerLobby] Generated username from email:', generatedUsername);
+      return generatedUsername;
+    }
+    
+    // Fallback to user ID (shouldn't happen)
+    console.log('[MultiplayerLobby] Using fallback user ID:', user.id);
+    return user.id;
+  };
 
   // Fetch public games
   const fetchPublicGames = async () => {
@@ -84,7 +114,8 @@ export function MultiplayerLobby() {
           wordLength,
           timeLimit,
           isPublic,
-          createdBy: user.id
+          createdBy: user.id,
+          username: getProperUsername(user)
         })
       })
 
@@ -134,7 +165,7 @@ export function MultiplayerLobby() {
         body: JSON.stringify({
           gameId: gameCode.trim(),
           userId: user.id,
-          username: user.username || user.email
+          username: getProperUsername(user)
         })
       })
 
@@ -184,7 +215,7 @@ export function MultiplayerLobby() {
         body: JSON.stringify({
           gameId,
           userId: user.id,
-          username: user.username || user.email
+          username: getProperUsername(user)
         })
       })
 
@@ -342,7 +373,9 @@ export function MultiplayerLobby() {
                       </Badge>
                     </div>
                     <p className="text-sm text-amber-200">
-                      Created by {game.created_by}
+                      Created by {game.creator_username && !game.creator_username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) 
+                        ? game.creator_username 
+                        : 'Anonymous'}
                     </p>
                   </div>
                   <Button

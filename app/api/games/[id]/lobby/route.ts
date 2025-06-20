@@ -17,7 +17,10 @@ export async function GET(
 
     // Get game details
     const gameResult = await query(`
-      SELECT * FROM games WHERE id = $1
+      SELECT g.*, u.username as creator_username
+      FROM games g
+      LEFT JOIN users u ON g.created_by = u.id
+      WHERE g.id = $1
     `, [gameId])
 
     if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
