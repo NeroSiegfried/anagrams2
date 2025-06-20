@@ -87,6 +87,7 @@ export async function POST(
         UPDATE game_players 
         SET 
           score = 0,
+          found_words = '[]'::jsonb,
           ready = false,
           updated_at = NOW()
         WHERE game_id = $1

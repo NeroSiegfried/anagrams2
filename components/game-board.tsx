@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Shuffle, Volume2, VolumeX, Clock, Settings } from "lucide-react"
+import { Shuffle, Volume2, VolumeX, Clock, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useGame } from "@/lib/game-context"
@@ -243,8 +243,20 @@ export function GameBoard({
             return;
           }
           
-          // Only update if the game state has actually changed
           const isGameActive = game.status === 'active' && game.started_at !== null;
+
+          // Always sync time if the game is active
+          if (isGameActive) {
+            const startTime = new Date(game.started_at).getTime();
+            const now = Date.now();
+            const elapsed = Math.floor((now - startTime) / 1000);
+            const newTimeLeft = Math.max(0, game.time_limit - elapsed);
+            if (newTimeLeft !== gameState.timeLeft) {
+              setGameState({ timeLeft: newTimeLeft });
+            }
+          }
+          
+          // Only update if the game state has actually changed
           const currentIsActive = gameState.isActive;
           const wordChanged = game.base_word !== gameState.baseWord;
           const statusChanged = isGameActive !== currentIsActive;
@@ -546,53 +558,19 @@ export function GameBoard({
   };
 
   const handlePlayAgain = async () => {
-    console.log('[GameBoard] handlePlayAgain called, clearing restoringGameOver and hasRestoredRef, starting new game');
-    console.log('[GameBoard] Current state - multiplayer:', multiplayer, 'gameId:', gameId, 'user:', user?.id);
     setShowGameOver(false);
-    localStorage.removeItem('anagramsGameOverState');
-    setRestoringGameOver(false);
-    hasRestoredRef.current = false;
-    hasStartedNewGameRef.current = false;
-    
-    if (multiplayer && gameId && user) {
-      // For multiplayer games, start a new round
-      console.log('[GameBoard] Multiplayer game over, starting new round');
-      try {
-        const response = await fetch(`/api/games/${gameId}/new-round`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id })
-        });
 
-        const data = await response.json();
-        console.log('[GameBoard] New round API response:', response.status, data);
-        
-        if (response.ok) {
-          console.log('[GameBoard] New round started:', data);
-          // The game board will automatically reload the new game state
-          // through the useEffect that watches for multiplayer games
-        } else {
-          console.error('[GameBoard] Failed to start new round:', data.error);
-          // Fallback to redirecting to lobby
-          router.push(`/play/multiplayer/${gameId}/lobby`);
-        }
-      } catch (error) {
-        console.error('[GameBoard] Error starting new round:', error);
-        // Fallback to redirecting to lobby
-        router.push(`/play/multiplayer/${gameId}/lobby`);
-      }
-    } else if (multiplayer && gameId) {
-      // For multiplayer games without user, redirect to lobby
-      console.log('[GameBoard] Multiplayer game over, redirecting to lobby');
+    if (multiplayer && gameId) {
+      // For multiplayer, simply navigate back to the lobby.
+      // The lobby component will show the correct state (e.g., waiting for host to start new round).
       router.push(`/play/multiplayer/${gameId}/lobby`);
     } else {
-      // For single player games, start a new game
+      // Single player logic remains the same
       setLoading(true);
-      Promise.resolve(startNewGame()).then(() => {
-        setCurrentWord([]);
-        setSelectedIndices([]);
-        setLoading(false);
-      });
+      await startNewGame();
+      setCurrentWord([]);
+      setSelectedIndices([]);
+      setLoading(false);
     }
   };
 
@@ -657,6 +635,62 @@ export function GameBoard({
     }
   }, [gameState.isActive, gameState.timeLeft, endGame, submitWord, showGameOver, restoringGameOver]);
 
+  const [leaving, setLeaving] = useState(false);
+
+  // Leave game handler (multiplayer only)
+  const leaveGame = async () => {
+    if (!user || !gameId) return;
+    setLeaving(true);
+    try {
+      const response = await fetch(`/api/games/${gameId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast({
+          title: 'Left game',
+          description: data.gameDeleted ? 'Game was deleted (no players left)' : 'Successfully left the game',
+        });
+        router.push('/play/multiplayer');
+      } else {
+        toast({
+          title: 'Failed to leave game',
+          description: data.error,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to leave game',
+        variant: 'destructive',
+      });
+    } finally {
+      setLeaving(false);
+    }
+  };
+
+  // Leave Game Button for multiplayer
+  let leaveButton: React.ReactNode = null;
+  if (multiplayer && gameId) {
+    leaveButton = (
+      <div className="fixed top-4 right-4 z-50">
+        <Button
+          onClick={leaveGame}
+          disabled={leaving}
+          variant="outline"
+          size="sm"
+          className="text-red-300 border-red-600 hover:bg-red-600/20 px-4 py-2"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          {leaving ? 'Leaving...' : 'Leave Game'}
+        </Button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <>
@@ -677,6 +711,7 @@ export function GameBoard({
   return (
     <>
       <Navbar onSettingsClick={() => setShowSettings(true)} />
+      {leaveButton}
       <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
         <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-2 sm:p-4 md:p-6 relative">
           {showSparkles && (
@@ -888,7 +923,6 @@ export function GameBoard({
             <div className="fixed inset-0 bg-black/60 z-40" />
           </div>
         )}
-        {console.log('[GameBoard] Render - showGameOver:', showGameOver, 'restoringGameOver:', restoringGameOver, 'gameState.isActive:', gameState.isActive)}
       </div>
     </>
   )

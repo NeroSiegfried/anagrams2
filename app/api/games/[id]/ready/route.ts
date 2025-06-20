@@ -46,4 +46,35 @@ export async function POST(
       { status: 500 }
     )
   }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const gameId = params.id
+    const { userId } = await request.json()
+
+    if (!gameId || !userId) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    // Mark this player as unready
+    await query(`
+      UPDATE game_players SET ready = false, updated_at = NOW()
+      WHERE game_id = $1 AND user_id = $2
+    `, [gameId, userId])
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error in unready endpoint:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
 } 

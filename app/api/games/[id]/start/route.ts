@@ -37,6 +37,39 @@ export async function POST(
       )
     }
 
+    // Check if there's at least one non-host player and all non-host players are ready
+    const playerCountResult = await query(`
+      SELECT 
+        COUNT(*) AS total_players,
+        COUNT(CASE WHEN is_host = false THEN 1 END) AS non_host_players,
+        COUNT(CASE WHEN is_host = false AND ready = false THEN 1 END) AS not_ready_non_host
+      FROM game_players
+      WHERE game_id = $1
+    `, [gameId])
+
+    const { total_players, non_host_players, not_ready_non_host } = playerCountResult.rows[0]
+    
+    if (parseInt(total_players) < 2) {
+      return NextResponse.json(
+        { error: 'At least 2 players are required to start the game' },
+        { status: 400 }
+      )
+    }
+    
+    if (parseInt(non_host_players) === 0) {
+      return NextResponse.json(
+        { error: 'At least one other player must join before starting the game' },
+        { status: 400 }
+      )
+    }
+    
+    if (parseInt(not_ready_non_host) > 0) {
+      return NextResponse.json(
+        { error: 'All players must be ready to start the game' },
+        { status: 400 }
+      )
+    }
+
     // Update game status to starting (not yet active)
     try {
       await query(`

@@ -48,6 +48,7 @@ export default function GameLobbyPage() {
   const [ready, setReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [allPlayersReady, setAllPlayersReady] = useState(false)
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
@@ -106,6 +107,17 @@ export default function GameLobbyPage() {
     }
   }, [gameId])
 
+  useEffect(() => {
+    if (game && game.game_players) {
+      // Consider host as always ready, check only non-host players
+      const nonHostPlayers = game.game_players.filter(p => !p.is_host)
+      const allReady = game.game_players.length > 1 && // Require at least 2 players total
+        nonHostPlayers.length > 0 && // Require at least one non-host player
+        nonHostPlayers.every(p => p.ready) // All non-host players must be ready
+      setAllPlayersReady(allReady)
+    }
+  }, [game])
+
   // Mark player as ready
   const markReady = async () => {
     if (!user || !game) return
@@ -154,6 +166,42 @@ export default function GameLobbyPage() {
     }
   }
 
+  // Mark player as unready
+  const markUnready = async () => {
+    if (!user || !game) return
+
+    try {
+      const response = await fetch(`/api/games/${gameId}/ready`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        setReady(false)
+        toast({
+          title: "Not ready",
+          description: "You can mark yourself ready again when you're prepared.",
+        })
+      } else {
+        toast({
+          title: "Failed to mark unready",
+          description: data.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error marking unready:', error)
+      toast({
+        title: "Error",
+        description: "Failed to mark unready",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Start the game (host only)
   const startGame = async () => {
     if (!user || !game) return
@@ -192,6 +240,44 @@ export default function GameLobbyPage() {
       setStarting(false)
     }
   }
+
+  const handleStartNewRound = async () => {
+    if (!user || !game) return;
+
+    setStarting(true);
+    try {
+      const response = await fetch(`/api/games/${gameId}/new-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "New round created!",
+          description: "Get ready...",
+        });
+        // The fetchLobbyInfo poll will handle updating the UI to the new 'waiting' state
+      } else {
+        toast({
+          title: 'Failed to start new round',
+          description: data.error,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error starting new round:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to start new round',
+        variant: 'destructive',
+      });
+    } finally {
+      setStarting(false);
+    }
+  };
 
   // Copy game code
   const copyGameCode = () => {
@@ -244,7 +330,7 @@ export default function GameLobbyPage() {
   }
 
   // Check if current user is host
-  const isHost = game?.game_players?.find(p => p.user_id === user?.id)?.is_host
+  const isHost = game?.created_by === user?.id;
 
   if (loading) {
     return (
@@ -349,7 +435,7 @@ export default function GameLobbyPage() {
                       <span className="text-amber-300 font-bold">
                         {player.score} pts
                       </span>
-                      {player.ready && (
+                      {(player.ready || player.is_host) && (
                         <Badge variant="default" className="bg-green-600 text-white">
                           Ready
                         </Badge>
@@ -362,73 +448,62 @@ export default function GameLobbyPage() {
           </Card>
 
           {/* Game Start Buttons */}
-          {isHost && game.status === 'waiting' && (
-            <div className="text-center space-y-4">
-              <Button
-                onClick={startGame}
-                disabled={starting}
-                size="lg"
-                className="wood-button text-lg px-8 py-4"
-              >
-                <Play className="h-5 w-5 mr-2" />
-                {starting ? 'Initiating...' : 'Initiate Game'}
-              </Button>
-              <p className="text-amber-200 text-sm">
-                Click to show the word to all players and wait for them to be ready
-              </p>
-            </div>
-          )}
+          <Card className="score-card">
+            <CardHeader>
+              <CardTitle className="text-amber-100">Game Start</CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4">
+              {game.status === 'waiting' && (
+                <>
+                  <p className="text-center text-gray-400 mb-6">
+                    Waiting for players to join and get ready. The host will start the game.
+                  </p>
+                  {isHost ? (
+                    <Button 
+                      onClick={startGame} 
+                      disabled={starting || gameStarted || !allPlayersReady} 
+                      className="w-full text-lg py-6"
+                    >
+                      <Play className="mr-2 h-5 w-5" /> 
+                      {starting ? 'Starting...' : (allPlayersReady ? 'Start Game' : 'Waiting for players...')}
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={ready ? markUnready : markReady} 
+                      disabled={gameStarted} 
+                      className="w-full text-lg py-6"
+                    >
+                      {ready ? 'Mark as Unready' : 'I am Ready!'}
+                    </Button>
+                  )}
+                </>
+              )}
 
-          {!isHost && game.status === 'waiting' && (
-            <div className="text-center">
-              <p className="text-amber-200 mb-4">
-                Waiting for host to initiate the game...
-              </p>
-            </div>
-          )}
-
-          {game.status === 'starting' && !ready && (
-            <div className="text-center space-y-4">
-              <div className="score-card p-6">
-                <h3 className="text-xl font-bold text-amber-100 mb-2">Game Word</h3>
-                <p className="text-3xl font-bold text-amber-300 mb-4">{game.base_word}</p>
-                <p className="text-amber-200 mb-4">Get ready! The game will start when all players are ready.</p>
-                <Button
-                  onClick={markReady}
-                  size="lg"
-                  className="wood-button text-lg px-8 py-4"
-                >
-                  I'm Ready!
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {game.status === 'starting' && ready && (
-            <div className="text-center">
-              <div className="score-card p-6">
-                <h3 className="text-xl font-bold text-amber-100 mb-2">Waiting for Players</h3>
-                <p className="text-amber-200">
-                  You're ready! Waiting for other players to be ready...
-                </p>
-                <div className="mt-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-300 mx-auto"></div>
+              {game.status === 'finished' && (
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-yellow-400 mb-4">Round Over!</h3>
+                  <p className="text-gray-400 mb-6">
+                    Final scores are in. The host can start the next round.
+                  </p>
+                  {isHost ? (
+                    <Button onClick={handleStartNewRound} disabled={starting} className="w-full text-lg py-6">
+                      <Play className="mr-2 h-5 w-5" /> {starting ? 'Starting...' : 'Start Next Round'}
+                    </Button>
+                  ) : (
+                    <p className="text-lg text-gray-300 p-4 bg-gray-800/50 rounded-lg">
+                      Waiting for the host to start the next round...
+                    </p>
+                  )}
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {gameStarted && (
-            <div className="text-center">
-              <div className="score-card p-6">
-                <h3 className="text-xl font-bold text-amber-100 mb-2">Game Starting!</h3>
-                <p className="text-amber-200">All players are ready. Redirecting to game...</p>
-                <div className="mt-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-300 mx-auto"></div>
+              {game.status === 'active' && (
+                <div className="text-center">
+                  <p className="text-lg text-green-400 animate-pulse">Game in progress...</p>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Leave Game Button */}
           <div className="text-center">

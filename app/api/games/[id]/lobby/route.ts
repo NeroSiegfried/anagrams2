@@ -32,6 +32,25 @@ export async function GET(
 
     const game = gameResult.rows[0]
 
+    // Server-side check to end the game if time is up
+    if (game.status === 'active' && game.started_at) {
+      const startTime = new Date(game.started_at).getTime();
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - startTime) / 1000);
+
+      if (elapsedSeconds > game.time_limit) {
+        // Time is up, update game status to finished
+        await query(`UPDATE games SET status = 'finished', updated_at = NOW() WHERE id = $1`, [gameId]);
+        game.status = 'finished'; // Update the object we're about to send
+        console.log(`[Lobby API] Game ${gameId} time is up. Status set to finished.`);
+      }
+    }
+
+    // Censor base_word if game is not active
+    if (game.status === 'waiting') {
+      game.base_word = game.base_word.split('').map(() => ' ').join('');
+    }
+
     // Get players for this game
     const playersResult = await query(`
       SELECT id, user_id, username, score, is_host, ready
