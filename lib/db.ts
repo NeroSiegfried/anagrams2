@@ -32,7 +32,7 @@ function initializeDatabase() {
   }
 }
 
-// Helper function for raw SQL queries using the correct Neon syntax
+// Helper function for raw SQL queries
 export async function query(sqlQuery: string, params: any[] = []) {
   const { sql: connection, error } = initializeDatabase()
 
@@ -41,20 +41,24 @@ export async function query(sqlQuery: string, params: any[] = []) {
   }
 
   try {
-    // Use the tagged template syntax for Neon
-    // Convert the query and params to a tagged template string
-    const paramPlaceholders = params.map((_, i) => `$${i + 1}`).join(", ")
-    const queryWithParams = sqlQuery.replace(/\$\d+/g, () => "?")
-
-    // For simple queries without parameters
-    if (params.length === 0) {
-      const result = await connection`${sqlQuery}`
+    console.log('Executing query:', sqlQuery, 'with params:', params)
+    const result = await connection(sqlQuery, params)
+    console.log('Raw Neon result:', result)
+    console.log('Result type:', typeof result)
+    console.log('Result keys:', Object.keys(result || {}))
+    
+    // Handle different result formats
+    if (result && result.rows) {
+      return { rows: result.rows }
+    } else if (Array.isArray(result)) {
       return { rows: result }
+    } else if (result && typeof result === 'object') {
+      // If result is already in the expected format
+      return result
+    } else {
+      console.error('Unexpected result format:', result)
+      return { rows: [] }
     }
-
-    // For queries with parameters, use sql.query
-    const result = await connection.query(sqlQuery, params)
-    return { rows: result }
   } catch (error) {
     console.error("Database query error:", error)
     throw error

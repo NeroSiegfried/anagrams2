@@ -64,7 +64,7 @@ export function GameBoard({
   // Track previous baseWord for logging
   const prevBaseWordRef = useRef<string | null>(null)
 
-  const { opponents, sendWordToServer, opponentScores } = useMultiplayer(gameId, multiplayer)
+  const { opponents, sendWordToServer, opponentScores, gameStatus } = useMultiplayer(gameId, multiplayer)
 
   const router = useRouter()
 
@@ -149,9 +149,58 @@ export function GameBoard({
       console.log('[GameBoard] Restoration complete, returning from effect');
       return; // Prevent starting a new game after restoration
     }
-    // Only start a new game if not restoring in this session
-    if (!hasRestoredRef.current && !hasStartedNewGameRef.current) {
-      console.log('[GameBoard] No restoration needed, starting new game');
+
+    // For multiplayer games, load the shared game state
+    if (multiplayer && gameId && !hasRestoredRef.current && !hasStartedNewGameRef.current) {
+      console.log('[GameBoard] Loading multiplayer game state for gameId:', gameId);
+      hasStartedNewGameRef.current = true;
+      setLoading(true);
+      
+      // Fetch game details from the database
+      fetch(`/api/games/${gameId}/lobby`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.game) {
+            const game = data.game;
+            console.log('[GameBoard] Loaded multiplayer game:', game);
+            
+            // Calculate time left based on started_at timestamp
+            let timeLeft = game.time_limit || 120;
+            if (game.started_at) {
+              const startTime = new Date(game.started_at).getTime();
+              const now = Date.now();
+              const elapsed = Math.floor((now - startTime) / 1000);
+              timeLeft = Math.max(0, game.time_limit - elapsed);
+            }
+            
+            // Use the shared game state
+            setGameState({
+              isActive: game.status === 'active' && game.started_at !== null,
+              letters: game.base_word.split(''),
+              foundWords: [],
+              score: 0,
+              timeLeft: timeLeft,
+              baseWord: game.base_word,
+              currentRound: game.current_round || 1,
+              gameId: game.id,
+              currentLetterCount: game.base_word.length,
+            });
+            
+            setLoading(false);
+            console.log('[GameBoard] Multiplayer game loaded successfully');
+          } else {
+            console.error('[GameBoard] Failed to load multiplayer game:', data.error);
+            setLoading(false);
+          }
+        })
+        .catch(error => {
+          console.error('[GameBoard] Error loading multiplayer game:', error);
+          setLoading(false);
+        });
+    }
+    // Only start a new game if not restoring in this session and not multiplayer
+    else if (!hasRestoredRef.current && !hasStartedNewGameRef.current && !multiplayer) {
+      console.log('[GameBoard] No restoration needed, starting new single-player game');
       hasStartedNewGameRef.current = true;
       localStorage.removeItem('anagramsGameOverState');
       localStorage.removeItem('anagramsReturnToGame');
@@ -161,12 +210,12 @@ export function GameBoard({
         setSelectedIndices([]);
         setShowGameOver(false);
         setLoading(false);
-        console.log('[GameBoard] New game started');
+        console.log('[GameBoard] New single-player game started');
       });
     } else {
       console.log('[GameBoard] Restoration already performed in this session or game already started, skipping new game');
     }
-  }, []);
+  }, [multiplayer, gameId]);
 
   // On new game, shuffle randomly and save to localStorage
   useEffect(() => {
@@ -298,7 +347,7 @@ export function GameBoard({
 
       // Multiplayer: send word to server
       if (multiplayer) {
-        sendWordToServer()
+        sendWordToServer(word, wordScore)
       }
 
       addFoundWord(word)
@@ -673,10 +722,10 @@ export function GameBoard({
                 <div className="mt-2 sm:mt-4 w-full score-card rounded-lg p-2 sm:p-4 shadow-md">
                   <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 text-amber-100">Opponents</h3>
                   <div className="space-y-1 sm:space-y-2">
-                    {opponents.map((opponent, i) => (
-                      <div key={i} className="flex justify-between items-center p-1 sm:p-2 felt-pattern rounded">
-                        <span className="text-sm sm:text-base text-amber-100">{opponent}</span>
-                        <span className="font-bold text-amber-300 text-sm sm:text-base">{opponentScores[opponent] || 0}</span>
+                    {opponents.map((opponent) => (
+                      <div key={opponent.id} className="flex justify-between items-center p-1 sm:p-2 felt-pattern rounded">
+                        <span className="text-sm sm:text-base text-amber-100">{opponent.username}</span>
+                        <span className="font-bold text-amber-300 text-sm sm:text-base">{opponentScores[opponent.id] || 0}</span>
                       </div>
                     ))}
                   </div>

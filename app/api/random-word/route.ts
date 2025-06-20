@@ -15,6 +15,8 @@ export async function GET(request: Request) {
       `SELECT word FROM words WHERE length = $1 ORDER BY random() LIMIT 1`,
       [length]
     )
+    console.log('SQL result:', sql)
+    console.log('SQL rows:', sql.rows)
     const word = sql.rows[0]?.word
     if (!word) {
       return NextResponse.json({ error: "No word found of that length" }, { status: 404 })
