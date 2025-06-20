@@ -75,6 +75,69 @@ export function GameBoard({
   // Add this near the top, after state declarations:
   const submitButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Automatic exit for multiplayer games
+  useEffect(() => {
+    if (!multiplayer || !user || !gameId) return;
+    const hasLeftRef = { current: false };
+
+    const leaveWithBeacon = () => {
+      if (hasLeftRef.current) return;
+      hasLeftRef.current = true;
+      
+      console.log('[GameBoard] Attempting to leave game via beacon:', gameId);
+      
+      try {
+        const url = `/api/games/${gameId}/leave`;
+        const data = JSON.stringify({ userId: user.id });
+        const success = navigator.sendBeacon(url, data);
+        
+        if (!success) {
+          console.log('[GameBoard] sendBeacon failed, trying fetch');
+          // Fallback to fetch if sendBeacon fails
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: data,
+            keepalive: true
+          }).catch(e => console.log('[GameBoard] Fallback fetch also failed:', e));
+        } else {
+          console.log('[GameBoard] sendBeacon successful');
+        }
+      } catch (e) {
+        console.log('[GameBoard] sendBeacon error:', e);
+        // Fallback to fetch
+        fetch(`/api/games/${gameId}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id }),
+          keepalive: true
+        }).catch(e => console.log('[GameBoard] Fallback fetch also failed:', e));
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      console.log('[GameBoard] beforeunload event triggered');
+      leaveWithBeacon();
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('[GameBoard] visibilitychange to hidden');
+        leaveWithBeacon();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      console.log('[GameBoard] Cleanup: removing event listeners');
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Do NOT call leaveWithBeacon here; only call on actual unload/navigation
+    };
+  }, [multiplayer, user, gameId]);
+
   // Initialize audio generator
   useEffect(() => {
     if (typeof window !== "undefined") {

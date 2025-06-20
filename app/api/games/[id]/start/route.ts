@@ -37,6 +37,26 @@ export async function POST(
       )
     }
 
+    // Check if game is in waiting status
+    const gameResult = await query(`
+      SELECT status FROM games WHERE id = $1
+    `, [gameId])
+
+    if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Game not found' },
+        { status: 404 }
+      )
+    }
+
+    const game = gameResult.rows[0]
+    if (game.status !== 'waiting') {
+      return NextResponse.json(
+        { error: 'Game is not in waiting status' },
+        { status: 400 }
+      )
+    }
+
     // Check if there's at least one non-host player and all non-host players are ready
     const playerCountResult = await query(`
       SELECT 
@@ -70,11 +90,11 @@ export async function POST(
       )
     }
 
-    // Update game status to starting (not yet active)
+    // Update game status to active and set started_at
     try {
       await query(`
         UPDATE games 
-        SET status = 'starting', updated_at = NOW()
+        SET status = 'active', started_at = NOW(), updated_at = NOW()
         WHERE id = $1
       `, [gameId])
     } catch (error) {
@@ -87,7 +107,7 @@ export async function POST(
 
     return NextResponse.json({ 
       success: true,
-      status: 'starting'
+      status: 'active'
     })
 
   } catch (error) {

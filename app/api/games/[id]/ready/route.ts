@@ -22,23 +22,19 @@ export async function POST(
       WHERE game_id = $1 AND user_id = $2
     `, [gameId, userId])
 
-    // Check if all players are ready
+    // Check if all non-host players are ready (host is always considered ready)
     const playersResult = await query(`
-      SELECT ready FROM game_players WHERE game_id = $1
+      SELECT is_host, ready FROM game_players WHERE game_id = $1
     `, [gameId])
 
-    const allReady = playersResult.rows.every((row: any) => row.ready)
+    const nonHostPlayers = playersResult.rows.filter((row: any) => !row.is_host)
+    const allNonHostReady = nonHostPlayers.length > 0 && nonHostPlayers.every((row: any) => row.ready)
 
-    if (allReady) {
-      // Set started_at and status=active
-      await query(`
-        UPDATE games SET started_at = NOW(), status = 'active', updated_at = NOW()
-        WHERE id = $1
-      `, [gameId])
-      return NextResponse.json({ allReady: true, started: true })
-    }
-
-    return NextResponse.json({ allReady: false, started: false })
+    // Don't automatically start the game - let the host do it manually
+    return NextResponse.json({ 
+      allReady: allNonHostReady, 
+      started: false 
+    })
   } catch (error) {
     console.error('Error in ready endpoint:', error)
     return NextResponse.json(

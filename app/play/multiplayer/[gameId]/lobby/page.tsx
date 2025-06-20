@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth-context'
 import { toast } from '@/hooks/use-toast'
 import { Navbar } from '@/components/navbar'
-import { Copy, Play, Users, Crown, LogOut, Settings } from 'lucide-react'
+import { Copy, Play, Users, Crown, LogOut, Settings, X } from 'lucide-react'
 import { GameSettingsForm } from '@/components/game-settings-form'
 
 interface Player {
@@ -59,6 +59,7 @@ export default function GameLobbyPage() {
     wordLength: 6
   })
   const [updatingSettings, setUpdatingSettings] = useState(false)
+  const [kickingPlayer, setKickingPlayer] = useState<string | null>(null)
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
@@ -410,6 +411,117 @@ export default function GameLobbyPage() {
   // Check if current user is host
   const isHost = game?.created_by === user?.id;
 
+  // Automatic exit: call leave API on unload or navigation
+  useEffect(() => {
+    if (!user || !gameId) return;
+    const hasLeftRef = { current: false };
+
+    const leaveWithBeacon = () => {
+      if (hasLeftRef.current) return;
+      hasLeftRef.current = true;
+      
+      console.log('[Lobby] Attempting to leave game via beacon:', gameId);
+      
+      try {
+        const url = `/api/games/${gameId}/leave`;
+        const data = JSON.stringify({ userId: user.id });
+        const success = navigator.sendBeacon(url, data);
+        
+        if (!success) {
+          console.log('[Lobby] sendBeacon failed, trying fetch');
+          // Fallback to fetch if sendBeacon fails
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: data,
+            keepalive: true
+          }).catch(e => console.log('[Lobby] Fallback fetch also failed:', e));
+        } else {
+          console.log('[Lobby] sendBeacon successful');
+        }
+      } catch (e) {
+        console.log('[Lobby] sendBeacon error:', e);
+        // Fallback to fetch
+        fetch(`/api/games/${gameId}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id }),
+          keepalive: true
+        }).catch(e => console.log('[Lobby] Fallback fetch also failed:', e));
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      console.log('[Lobby] beforeunload event triggered');
+      leaveWithBeacon();
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('[Lobby] visibilitychange to hidden');
+        leaveWithBeacon();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      console.log('[Lobby] Cleanup: removing event listeners');
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Do NOT call leaveWithBeacon here; only call on actual unload/navigation
+    };
+  }, [user, gameId]);
+
+  // Kick a player from the game
+  const kickPlayer = async (targetUserId: string) => {
+    if (!user || !game) return
+
+    setKickingPlayer(targetUserId)
+    try {
+      const response = await fetch(`/api/games/${gameId}/kick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId: user.id,
+          targetUserId: targetUserId
+        })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast({
+          title: "Player kicked",
+          description: data.gameDeleted ? "Game was deleted (no players left)" : "Player has been removed from the game",
+        })
+        
+        if (data.gameDeleted) {
+          router.push('/play/multiplayer')
+        } else {
+          // Refresh lobby info to update player list
+          fetchLobbyInfo()
+        }
+      } else {
+        toast({
+          title: "Failed to kick player",
+          description: data.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error kicking player:', error)
+      toast({
+        title: "Error",
+        description: "Failed to kick player",
+        variant: "destructive",
+      })
+    } finally {
+      setKickingPlayer(null)
+    }
+  }
+
   if (loading) {
     return (
       <>
@@ -556,6 +668,21 @@ export default function GameLobbyPage() {
                         <Badge variant="default" className="bg-green-600 text-white">
                           Ready
                         </Badge>
+                      )}
+                      {isHost && !player.is_host && game.status === 'waiting' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => kickPlayer(player.user_id)}
+                          disabled={kickingPlayer === player.user_id}
+                          className="text-red-400 border-red-600 hover:bg-red-600/20 h-8 px-2"
+                        >
+                          {kickingPlayer === player.user_id ? (
+                            <div className="animate-spin rounded-full h-3 w-3 border-b border-red-400"></div>
+                          ) : (
+                            <X className="h-3 w-3" />
+                          )}
+                        </Button>
                       )}
                     </div>
                   </div>
