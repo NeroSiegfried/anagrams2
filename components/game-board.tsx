@@ -824,18 +824,22 @@ export function GameBoard({
     }
   }, [showGameOver, gameState.score, gameState.foundWords, gameState.baseWord])
 
-  // For GameOverModal, use saved state if present
+  // For GameOverModal, use saved state if present (single player only)
   let gameOverScore = gameState.score
   let gameOverFoundWords = gameState.foundWords
   let gameOverBaseWord = gameState.baseWord
-  const saved = typeof window !== 'undefined' ? localStorage.getItem('anagramsGameOverState') : null
-  if (showGameOver && saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      gameOverScore = parsed.score
-      gameOverFoundWords = parsed.foundWords
-      gameOverBaseWord = parsed.baseWord
-    } catch {}
+  
+  // Only use localStorage for single player games
+  if (!multiplayer && showGameOver) {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('anagramsGameOverState') : null
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        gameOverScore = parsed.score
+        gameOverFoundWords = parsed.foundWords
+        gameOverBaseWord = parsed.baseWord
+      } catch {}
+    }
   }
 
   // Shuffle button handler (true random)
