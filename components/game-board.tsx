@@ -540,27 +540,6 @@ export function GameBoard({
     setSelectedIndices((prev) => prev.filter((_, i) => i !== slotIndex))
   }
 
-  const handleTileClick = (index: number) => {
-    if (gameState.timeLeft <= 0 || (!multiplayer && !gameState.isActive)) return
-
-    // If tile is already selected, unselect it
-    if (selectedIndices.includes(index)) {
-      // Find the position of this tile in the current word
-      const wordIndex = selectedIndices.indexOf(index)
-      if (wordIndex !== -1) {
-        // Remove the letter from the current word
-        setCurrentWord((prev) => prev.filter((_, i) => i !== wordIndex))
-        // Remove the index from selectedIndices
-        setSelectedIndices((prev) => prev.filter((_, i) => i !== wordIndex))
-      }
-    } else {
-      // If tile is not selected and we have room, select it
-      if (currentWord.length < gameState.currentLetterCount) {
-        addLetterToWord(index)
-      }
-    }
-  }
-
   // True random shuffle for the shuffle button
   function scrambleLetters(word: string): string[] {
     const letters = word.split("")
@@ -894,23 +873,6 @@ export function GameBoard({
     }, 0)
   }
 
-  // After every entry, restore the order from localStorage
-  // useEffect(() => {
-  //   if (gameState.baseWord) {
-  //     try {
-  //       const key = `anagramsScrambledLetters_${gameState.baseWord}`
-  //       const stored = localStorage.getItem(key)
-  //       if (stored) {
-  //         const savedOrder = JSON.parse(stored)
-  //         if (Array.isArray(savedOrder) && savedOrder.length === gameState.baseWord.length) {
-  //           // Scrambled letters will be restored by useMemo when baseWord changes
-  //         }
-  //       }
-  //     } catch {}
-  //   }
-  //   // Only runs when baseWord changes
-  // }, [gameState.baseWord])
-
   // When closing the modal or starting a new game, clear the saved state
   const handleCloseGameOver = () => {
     console.log('[GameBoard] handleCloseGameOver called, clearing restoringGameOver and hasRestoredRef');
@@ -1093,8 +1055,8 @@ export function GameBoard({
           size = 56;
         }
       } else {
-        // Mobile: clamp to 60px maximum for better fit (reduced from 80px)
-        size = Math.min(size, 60);
+        // Mobile: clamp to 80px maximum for good touch interaction
+        size = Math.min(size, 80);
       }
       
       setTileSize(size);
@@ -1110,7 +1072,7 @@ export function GameBoard({
     if (!tileContainerRef.current) return [letters];
     const containerWidth = tileContainerRef.current.offsetWidth;
     const isDesktop = window.innerWidth >= 768;
-    const maxTileSize = isDesktop ? 56 : 60; // Reduced mobile size
+    const maxTileSize = isDesktop ? 56 : 80;
     const gap = 5;
     const totalGaps = letters.length - 1;
     const requiredWidth = letters.length * maxTileSize + totalGaps * gap;
@@ -1145,7 +1107,7 @@ export function GameBoard({
     <>
       <Navbar onSettingsClick={() => setShowSettings(true)} />
       {leaveButton}
-      <div className="h-screen flex flex-col items-center justify-start p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
+      <div className="min-h-screen flex flex-col items-center justify-start p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
         <div className="w-full max-w-4xl mx-auto game-card rounded-none sm:rounded-2xl border-0 sm:border-4 border-amber-600 shadow-none sm:shadow-2xl p-0 sm:p-4 md:p-6 relative h-full flex flex-col">
           {showSparkles && (
             <>
@@ -1390,10 +1352,12 @@ export function GameBoard({
                     }
                     globalIdx += i;
                     
+                    const isSelected = selectedIndices.includes(globalIdx);
+                    
                     return (
                       <div
                         key={globalIdx}
-                        className={`letter-tile ${selectedIndices.includes(globalIdx) ? "opacity-50" : ""}`}
+                        className={`letter-tile ${isSelected ? 'empty-slot' : ''}`}
                         style={{
                           width: tileSize,
                           height: tileSize,
@@ -1401,15 +1365,20 @@ export function GameBoard({
                           fontSize: tileSize * 0.8,
                           minWidth: tileSize,
                           minHeight: tileSize,
+                          background: isSelected ? 'linear-gradient(145deg, #0f5d2a 0%, #1a7a3e 100%)' : undefined,
+                          border: isSelected ? '2px solid #8b4513' : undefined,
+                          boxShadow: isSelected ? 'inset 0 2px 4px rgba(0,0,0,0.3)' : undefined,
                         }}
-                        onClick={() => gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && handleTileClick(globalIdx)}
+                        onClick={() => !isSelected && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
                       >
-                        <span
-                          className="font-bold text-amber-900 z-10 relative"
-                          style={{ fontSize: tileSize * 0.8 }}
-                        >
-                          {letter.toUpperCase()}
-                        </span>
+                        {!isSelected && (
+                          <span
+                            className="font-bold text-amber-900 z-10 relative"
+                            style={{ fontSize: tileSize * 0.8 }}
+                          >
+                            {letter.toUpperCase()}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
