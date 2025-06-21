@@ -67,7 +67,7 @@ export function UserProfile() {
       <>
         <Navbar />
         <div className="min-h-screen casino-table flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20">
-          <div className="w-full max-w-md mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-3 sm:p-6 text-center">
+          <div className="w-full max-w-md mx-auto game-card border-0 sm:border-4 border-amber-600 rounded-none sm:rounded-xl shadow-none sm:shadow-2xl p-3 sm:p-6 text-center">
             <User className="h-12 w-12 sm:h-16 sm:w-16 text-amber-300 mx-auto mb-3 sm:mb-4" />
             <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-amber-100">Profile</h1>
             <p className="mb-4 sm:mb-6 text-sm sm:text-base text-amber-200">Please log in to view your profile</p>
@@ -93,7 +93,7 @@ export function UserProfile() {
           <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               <motion.div
-                className="game-card border-4 border-amber-600 rounded-xl shadow-2xl p-3 sm:p-6"
+                className="game-card border-0 sm:border-4 border-amber-600 rounded-none sm:rounded-xl shadow-none sm:shadow-2xl p-3 sm:p-6"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
@@ -172,7 +172,7 @@ export function UserProfile() {
             </div>
 
             <motion.div
-              className="game-card border-4 border-amber-600 rounded-xl shadow-2xl p-3 sm:p-6"
+              className="game-card border-0 sm:border-4 border-amber-600 rounded-none sm:rounded-xl shadow-none sm:shadow-2xl p-3 sm:p-6"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}

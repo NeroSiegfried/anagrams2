@@ -68,7 +68,7 @@ export function GameOverModal({ score, foundWords, baseWord, onClose, onPlayAgai
       exit={{ opacity: 0 }}
     >
       <motion.div
-        className="game-card border-4 border-amber-600 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col"
+        className="game-card border-0 sm:border-4 border-amber-600 rounded-none sm:rounded-xl shadow-none sm:shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}

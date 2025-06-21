@@ -1,170 +1,145 @@
-# Anagram game requirements
+# Anagrams - Word Puzzle Game
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+A cozy word-play challenge with casino-style elegance. Play solo or challenge friends in real-time multiplayer matches!
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/nerosiegfrieds-projects/v0-anagram-game-requirements)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/ZacxGsubCAJ)
+## Features
 
-## Overview
+- **Single Player Mode**: Challenge yourself with increasingly difficult word puzzles
+- **Multiplayer Mode**: Compete against friends or random players in real-time matches
+- **Casino-Style UI**: Beautiful, elegant interface with smooth animations
+- **Real-time Scoring**: Track your progress and compete on leaderboards
+- **Customizable Settings**: Adjust game settings to match your preferences
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+## Getting Started
 
-## Deployment
+### Prerequisites
 
-Your project is live at:
+- Node.js 18+ 
+- npm or pnpm
+- PostgreSQL database (Neon recommended)
 
-**[https://vercel.com/nerosiegfrieds-projects/v0-anagram-game-requirements](https://vercel.com/nerosiegfrieds-projects/v0-anagram-game-requirements)**
+### Installation
 
-## Build your app
-
-Continue building your app on:
-
-**[https://v0.dev/chat/projects/ZacxGsubCAJ](https://v0.dev/chat/projects/ZacxGsubCAJ)**
-
-## How It Works
-
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
-
-## Multiplayer System
-
-The game includes a comprehensive multiplayer system with real-time lobby management and game coordination.
-
-### Features
-
-- **Public Game Lobby**: Browse and join public games
-- **Private Games**: Create private games with invite codes
-- **Real-time Updates**: Live updates of player status and game state
-- **Host Controls**: Game hosts can manage settings and start games
-- **Player Management**: Kick players, manage readiness status
-- **Automatic Cleanup**: Stale games are automatically cleaned up
-
-### Multiplayer API Endpoints
-
-- `POST /api/games/create` - Create a new game
-- `GET /api/games/public` - List public games
-- `POST /api/games/join` - Join a game
-- `GET /api/games/[id]/lobby` - Get lobby information
-- `POST /api/games/[id]/ready` - Mark player as ready
-- `POST /api/games/[id]/start` - Start the game (host only)
-- `POST /api/games/[id]/leave` - Leave the game
-- `POST /api/games/[id]/kick` - Kick a player (host only)
-
-### Database Cleanup
-
-The system includes automatic cleanup of stale data:
-
-- **Empty Games**: Games with no players are automatically removed
-- **Stale Waiting Games**: Games waiting for more than 1 hour are cleaned up
-- **Stale Active Games**: Games active for more than 2 hours are cleaned up
-- **Orphaned Data**: Orphaned player entries are removed
-
-#### Manual Cleanup
-
-Run the cleanup script manually:
+1. Clone the repository:
 ```bash
-npm run cleanup
+git clone <repository-url>
+cd anagrams2
 ```
 
-#### API Cleanup
-
-Trigger cleanup via API:
+2. Install dependencies:
 ```bash
-curl -X POST https://your-domain.com/api/cleanup
+npm install
+# or
+pnpm install
 ```
 
-#### Automated Cleanup
-
-Set up a cron job to run cleanup regularly:
+3. Set up environment variables:
 ```bash
-# Run every 30 minutes
-*/30 * * * * curl -X POST https://your-domain.com/api/cleanup
+cp .env.example .env.local
+# Edit .env.local with your database URL and other settings
 ```
 
-## Authentication System
+4. Run database migrations:
+```bash
+npm run db:push
+```
 
-The game includes a comprehensive authentication system designed to be easily extensible for OAuth providers (Google, GitHub, etc.) in the future.
+5. Start the development server:
+```bash
+npm run dev
+```
 
-### Features
+## Development Scripts
 
-- **User Registration**: Secure account creation with validation
-- **User Login**: Email/password authentication with session management
-- **Session Management**: Secure session tokens with automatic expiration
-- **User Preferences**: Per-user game settings and preferences
-- **OAuth Ready**: Database schema supports future OAuth integration
+- `npm run dev` - Start development server with Turbo mode
+- `npm run dev:stable` - Start development server with increased memory allocation
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run dev-refresh` - Diagnostic script to check and restart development server
 
-### Database Schema
+## Troubleshooting
 
-The authentication system uses the following tables:
+### Home Page Loading Issues
 
-- `users`: User accounts with email, username, and profile information
-- `accounts`: OAuth provider accounts (for future OAuth integration)
-- `sessions`: User session management
-- `verification_tokens`: Email verification tokens
-- `user_preferences`: User-specific game settings
-- `games`: Game instances and metadata
-- `game_players`: Many-to-many relationship between users and games
-- `scores`: Individual game scores
-- `game_history`: Detailed game history for analytics
-- `words`: Dictionary words with definitions
+If you experience unreliable home page loading or need to restart the server frequently:
 
-### Setup
+#### Common Causes:
+1. **Database Connection Issues**: The app now includes a real database health check
+2. **Auth Context Loading**: Improved error handling and timeouts
+3. **Hydration Mismatches**: Better client-side hydration handling
+4. **Memory Issues**: Optimized webpack configuration and memory management
 
-1. **Database Setup**: Run the database migration script:
+#### Solutions:
+
+1. **Use the stable development server**:
+   ```bash
+   npm run dev:stable
+   ```
+
+2. **Clear Next.js cache**:
+   ```bash
+   rm -rf .next
+   npm run dev
+   ```
+
+3. **Check database connection**:
+   - Look for the database status indicator in the top-right corner
+   - If it shows "Database Connection Failed", check your DATABASE_URL
+
+4. **Clear browser cache and cookies**:
+   - Hard refresh (Ctrl+Shift+R)
+   - Clear browser data for localhost
+
+5. **Check for errors**:
+   - Open browser developer tools
+   - Check Console and Network tabs for errors
+   - Look for any failed API requests
+
+6. **Use the diagnostic script**:
+   ```bash
+   npm run dev-refresh
+   ```
+
+#### Prevention:
+
+- The app now includes error boundaries to catch and handle errors gracefully
+- Improved auth context with timeout handling
+- Better hydration management for client-side components
+- Optimized webpack configuration for development
+
+### Database Issues
+
+If you encounter database-related problems:
+
+1. **Check your DATABASE_URL** in `.env.local`
+2. **Verify database connectivity** using the health check endpoint
+3. **Run database setup scripts** if needed:
    ```bash
    node scripts/setup-database.js
    ```
 
-2. **Environment Variables**: Ensure your `.env.local` file includes:
-   ```
-   DATABASE_URL=your_postgresql_connection_string
-   ```
+### Performance Issues
 
-3. **Install Dependencies**: The authentication system requires bcryptjs:
-   ```bash
-   npm install bcryptjs @types/bcryptjs --legacy-peer-deps
-   ```
+- Use `npm run dev:stable` for better memory management
+- The app now includes optimized bundle splitting
+- Improved hot reloading configuration
 
-### Usage
+## Architecture
 
-- **Registration**: Users can create accounts with username, email, and password
-- **Login**: Users can log in with email and password
-- **Session Persistence**: Sessions are automatically maintained across browser sessions
-- **User Preferences**: Game settings are saved per user
-- **Logout**: Users can log out, which invalidates their session
-
-### Future OAuth Integration
-
-The system is designed to easily support OAuth providers:
-
-1. **Database Ready**: The `accounts` table supports OAuth provider data
-2. **Service Layer**: The `AuthService` class includes OAuth account linking methods
-3. **Context Integration**: The auth context can be extended to handle OAuth flows
-
-## Getting Started
-
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Set up your database and run migrations
-4. Configure environment variables
-5. Start the development server: `npm run dev`
-
-## Tech Stack
-
-- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **Backend**: Next.js API Routes, PostgreSQL
-- **Authentication**: Custom session-based auth with bcryptjs
-- **Database**: PostgreSQL with Prisma ORM
-- **Styling**: Tailwind CSS with shadcn/ui components
+- **Frontend**: Next.js 14 with React 18
+- **Styling**: Tailwind CSS with custom casino theme
 - **Animations**: Framer Motion
-- **Audio**: Web Audio API
+- **Database**: PostgreSQL with Neon
+- **Authentication**: Custom session-based auth
+- **Real-time**: WebSocket connections for multiplayer
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 

@@ -1200,6 +1200,117 @@ function generateFallbackSubwords(letters: string, minLength = 3): Word[] {
   }))
 }
 
+export async function findValidSubwordsWithoutDefinitions(letters: string, minLength = 3): Promise<{ word: string; length: number }[]> {
+  try {
+    // Generate all unique combinations of the letters (length >= minLength)
+    const lowerLetters = letters.toLowerCase()
+    const letterArr = lowerLetters.split("")
+    const seenCanonicalForms = new Set<string>()
+
+    // Helper to generate all unique combinations of the letters
+    function* getCombinations(arr: string[], k: number): Generator<string[]> {
+      if (k === 0) {
+        yield []
+        return
+      }
+      for (let i = 0; i <= arr.length - k; i++) {
+        const head = arr[i]
+        const rest = arr.slice(i + 1)
+        for (const tail of getCombinations(rest, k - 1)) {
+          yield [head, ...tail]
+        }
+      }
+    }
+
+    // Collect all canonical forms first
+    const canonicalForms: string[] = []
+    for (let len = minLength; len <= letterArr.length; len++) {
+      for (const combo of getCombinations(letterArr, len)) {
+        const canonical = combo.slice().sort().join("")
+        if (!seenCanonicalForms.has(canonical)) {
+          seenCanonicalForms.add(canonical)
+          canonicalForms.push(canonical)
+        }
+      }
+    }
+
+    // Batch query for all canonical forms - only select word and length
+    if (canonicalForms.length > 0) {
+      const placeholders = canonicalForms.map((_, i) => `$${i + 1}`).join(", ")
+      const sql = await query(
+        `SELECT word, length FROM words WHERE canonical_form IN (${placeholders})`,
+        canonicalForms
+      )
+      const foundWords = sql.rows.map((row: any) => ({
+        word: row.word,
+        length: row.length
+      }))
+      
+      console.log(`Found ${foundWords.length} subwords (without definitions) for "${letters}"`)
+      return foundWords
+    }
+
+    return []
+  } catch (error: any) {
+    console.warn("Error finding subwords without definitions, falling back to old method:", error)
+    // Fall back to the old method
+    try {
+      // Get all words of appropriate length - only select word and length
+      const sql = await query(
+        "SELECT word, length FROM words WHERE length >= $1 AND length <= $2 ORDER BY length DESC, is_common DESC LIMIT 1000",
+        [minLength, letters.length]
+      )
+      const data = sql.rows as { word: string; length: number }[]
+      
+      // Filter to only include valid subwords
+      const letterCounts: Record<string, number> = {}
+      for (const char of letters.toLowerCase()) {
+        letterCounts[char] = (letterCounts[char] || 0) + 1
+      }
+      const validSubwords = (data || []).filter((row) => {
+        const subwordCounts: Record<string, number> = {}
+        for (const char of row.word.toLowerCase()) {
+          subwordCounts[char] = (subwordCounts[char] || 0) + 1
+          if (!letterCounts[char] || subwordCounts[char] > letterCounts[char]) {
+            return false
+          }
+        }
+        return true
+      })
+      console.log(`Found ${validSubwords.length} subwords using fallback method (without definitions) for "${letters}"`)
+      return validSubwords
+    } catch (fallbackError: any) {
+      console.warn("Error finding subwords without definitions, using offline fallback:", fallbackError)
+      return generateFallbackSubwordsWithoutDefinitions(letters, minLength)
+    }
+  }
+}
+
+function generateFallbackSubwordsWithoutDefinitions(letters: string, minLength = 3): { word: string; length: number }[] {
+  const letterCounts: Record<string, number> = {}
+  for (const char of letters.toLowerCase()) {
+    letterCounts[char] = (letterCounts[char] || 0) + 1
+  }
+
+  const validWords = FALLBACK_WORDS.filter((word) => {
+    if (word.length < minLength || word.length > letters.length) return false
+
+    const wordCounts: Record<string, number> = {}
+    for (const char of word) {
+      wordCounts[char] = (wordCounts[char] || 0) + 1
+      if (!letterCounts[char] || wordCounts[char] > letterCounts[char]) {
+        return false
+      }
+    }
+    return true
+  })
+
+  return validWords.map((word) => ({
+    word,
+    length: word.length,
+  }))
+}
+
 export async function findAnagrams(word: string): Promise<Word[]> {
   try {
     const canonicalForm = word.toLowerCase().split("").sort().join("")

@@ -139,10 +139,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Fetch all valid subwords/anagrams from the database using the API endpoint
     let subwords: Word[] = []
     try {
-      const response = await fetch(`/api/possible-words?letters=${encodeURIComponent(baseWord)}`)
+      const response = await fetch(`/api/possible-words?letters=${encodeURIComponent(baseWord)}&withoutDefinitions=true`)
       if (response.ok) {
         const data = await response.json()
-        subwords = data.words || []
+        // Convert the simplified word objects to Word[] format
+        subwords = (data.words || []).map((w: { word: string; length: number }) => ({
+          id: w.word,
+          word: w.word,
+          length: w.length,
+          is_common: false,
+          definition: null,
+          created_at: new Date().toISOString(),
+        }))
       }
     } catch (e) {
       console.warn("Error fetching subwords:", e)

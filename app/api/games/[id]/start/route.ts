@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { neon } from '@neondatabase/serverless'
-import { findValidSubwords } from '@/lib/word-service'
+import { findValidSubwordsWithoutDefinitions } from '@/lib/word-service'
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       console.info('[Multiplayer] Computing valid words for base word', { gameId, baseWord });
       
       try {
-        const validWords = await findValidSubwords(baseWord, 3)
+        const validWords = await findValidSubwordsWithoutDefinitions(baseWord, 3)
         const validWordsList = validWords.map(word => word.word.toLowerCase())
         
         console.info('[Multiplayer] Found valid words', { gameId, wordCount: validWordsList.length });

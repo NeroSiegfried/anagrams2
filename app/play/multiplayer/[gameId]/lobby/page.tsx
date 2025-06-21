@@ -692,8 +692,8 @@ export default function GameLobbyPage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-green-900 p-4 pt-20">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="min-h-screen bg-green-900 p-0 sm:p-4 pt-20">
+        <div className="max-w-2xl mx-auto space-y-6 p-2 sm:p-0">
           {/* Game Info */}
           <Card className="score-card">
             <CardHeader>

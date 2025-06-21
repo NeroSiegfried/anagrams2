@@ -29,12 +29,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const sessionToken = getSessionToken()
         if (sessionToken) {
-          // Call API to validate session
+          // Call API to validate session with timeout
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+          
           const response = await fetch('/api/auth/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionToken })
+            body: JSON.stringify({ sessionToken }),
+            signal: controller.signal
           })
+          
+          clearTimeout(timeoutId)
           
           if (response.ok) {
             const data = await response.json()
@@ -48,7 +54,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Error checking session:', error)
-        clearSessionToken()
+        // Don't clear session token on network errors, only on auth errors
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.log('Session check timed out, continuing without session')
+        } else {
+          clearSessionToken()
+        }
       } finally {
         setLoading(false)
       }

@@ -33,7 +33,8 @@ export default function WordsPage() {
 
       try {
         setLoading(true)
-        const response = await fetch(`/api/possible-words?letters=${baseWord}`)
+        // Use the optimized API call that returns words without definitions
+        const response = await fetch(`/api/possible-words?letters=${baseWord}&withoutDefinitions=true`)
 
         if (!response.ok) {
           throw new Error("Failed to fetch possible words")

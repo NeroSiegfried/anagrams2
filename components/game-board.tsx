@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Shuffle, Volume2, VolumeX, Clock, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,9 @@ export function GameBoard({
   const hasAutoSubmitted = useRef(false)
   const hasStartedNewGameRef = useRef(false)
   const lastScoreUpdateRef = useRef(0) // Rate limiting for score updates
+  const [tileSize, setTileSize] = useState(56); // px, default desktop size
+  const tileContainerRef = useRef<HTMLDivElement>(null);
+  const ongoingRequestRef = useRef<Promise<any> | null>(null); // Track ongoing API requests
 
   const audioGeneratorRef = useRef<AudioGenerator | null>(null)
 
@@ -214,6 +217,7 @@ export function GameBoard({
   // On mount, check for saved game over state or return-to-game flag
   useEffect(() => {
     console.log('[GameBoard] Mount effect running');
+    
     const saved = localStorage.getItem('anagramsGameOverState');
     const returnToGame = localStorage.getItem('anagramsReturnToGame');
     if (!hasRestoredRef.current && saved && returnToGame) {
@@ -252,71 +256,9 @@ export function GameBoard({
       return; // Prevent starting a new game after restoration
     }
 
-    // For multiplayer games, always load the shared game state (even when rejoining)
-    if (multiplayer && gameId) {
-      console.log('[GameBoard] Loading multiplayer game state for gameId:', gameId);
-      setLoading(true);
-      
-      // Fetch game details from the database
-      fetch(`/api/games/${gameId}/lobby`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.game) {
-            const game = data.game;
-            console.log('[GameBoard] Loaded multiplayer game:', game);
-            
-            // Only show the word if the game is active and has started
-            const isGameActive = game.status === 'active' && game.started_at !== null;
-            
-            // Calculate time left based on started_at timestamp
-            let timeLeft = game.time_limit || 120;
-            if (game.started_at && isGameActive) {
-              const startTime = new Date(game.started_at).getTime();
-              const now = Date.now();
-              const elapsed = Math.floor((now - startTime) / 1000);
-              timeLeft = Math.max(0, game.time_limit - elapsed);
-            }
-            
-            // Find the current user's player data
-            const currentPlayer = game.game_players?.find((player: any) => player.user_id === user?.id);
-            const userScore = currentPlayer?.score || 0;
-            const userFoundWords = currentPlayer?.found_words || [];
-            
-            console.log('[GameBoard] Current player data:', { currentPlayer, userScore, userFoundWords });
-            
-            // Use the shared game state
-            setGameState({
-              isActive: isGameActive,
-              letters: game.base_word.split(''),
-              foundWords: userFoundWords,
-              score: userScore,
-              timeLeft: timeLeft,
-              baseWord: game.base_word,
-              currentRound: game.current_round || 1,
-              gameId: game.id,
-              currentLetterCount: game.base_word.length,
-              validWords: game.valid_words || [], // Add valid words for client-side validation
-              gameStatus: game.status, // Track the game status
-            });
-            
-            // Only reset game over state if the game is actually active
-            if (isGameActive) {
-              setShowGameOver(false);
-              setRestoringGameOver(false);
-            }
-          }
-        })
-        .catch(error => {
-          console.error('[GameBoard] Error loading multiplayer game state:', error);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
     // Only start a new game if not restoring in this session and not multiplayer
-    else if (!hasRestoredRef.current && !hasStartedNewGameRef.current && !multiplayer) {
-      console.log('[GameBoard] No restoration needed, starting new single-player game');
-      hasStartedNewGameRef.current = true;
+    if (!hasRestoredRef.current && !multiplayer) {
+      console.log('[GameBoard] Starting new single-player game');
       localStorage.removeItem('anagramsGameOverState');
       localStorage.removeItem('anagramsReturnToGame');
       setLoading(true);
@@ -328,21 +270,55 @@ export function GameBoard({
         console.log('[GameBoard] New single-player game started');
       });
     } else {
-      console.log('[GameBoard] Restoration already performed in this session or game already started, skipping new game');
+      console.log('[GameBoard] Restoration already performed in this session, skipping new game');
+      setLoading(false);
     }
   }, [multiplayer, gameId]);
 
-  // Poll for multiplayer game state changes
+  // Cleanup effect to reset flags when component unmounts
+  useEffect(() => {
+    return () => {
+      // Reset the flag when component unmounts
+      hasRestoredRef.current = false;
+    };
+  }, []);
+
+  // Unified game state management for multiplayer games
   useEffect(() => {
     if (!multiplayer || !gameId) return;
+
+    console.log('[GameBoard] Setting up game state management for multiplayer game:', gameId);
+
+    // Check if we're already managing this game to prevent duplicate setups
+    const setupKey = `game-setup-${gameId}`;
+    if ((window as any)[setupKey]) {
+      console.log('[GameBoard] Already managing this game, skipping duplicate setup:', gameId);
+      return;
+    }
+    (window as any)[setupKey] = true;
 
     let pollCount = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 3;
+    let isInitialLoad = true; // Track if this is the initial load
+    let intervalId: NodeJS.Timeout | null = null;
+    let isCleanedUp = false; // Track if the effect has been cleaned up
 
-    const pollGameState = async () => {
+    const loadGameState = async () => {
+      // Prevent duplicate requests and check if cleaned up
+      if (ongoingRequestRef.current || isCleanedUp) {
+        console.log('[GameBoard] Request already in progress or cleaned up, skipping call');
+        return ongoingRequestRef.current;
+      }
+
       try {
-        const response = await fetch(`/api/games/${gameId}/lobby`);
+        console.log('[GameBoard] Loading game state:', { isInitialLoad, gameId, pollCount });
+        
+        // Create the request promise and store it
+        const requestPromise = fetch(`/api/games/${gameId}/lobby`);
+        ongoingRequestRef.current = requestPromise;
+        
+        const response = await requestPromise;
         
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -362,7 +338,9 @@ export function GameBoard({
           
           const isGameActive = game.status === 'active' && game.started_at !== null;
           
-          console.log('[GameBoard] Polling game state:', { 
+          console.log('[GameBoard] Game state loaded:', { 
+            isInitialLoad,
+            pollCount,
             gameStatus: game.status, 
             isGameActive, 
             currentGameStatus: gameState.gameStatus,
@@ -370,41 +348,30 @@ export function GameBoard({
             timeLeft: gameState.timeLeft
           });
 
-          // Always sync time if the game is active
-          if (isGameActive) {
+          // Calculate time left based on started_at timestamp
+          let timeLeft = game.time_limit || 120;
+          if (game.started_at && isGameActive) {
             const startTime = new Date(game.started_at).getTime();
             const now = Date.now();
             const elapsed = Math.floor((now - startTime) / 1000);
-            const newTimeLeft = Math.max(0, game.time_limit - elapsed);
-            if (newTimeLeft !== gameState.timeLeft) {
-              setGameState({ timeLeft: newTimeLeft });
-            }
+            timeLeft = Math.max(0, game.time_limit - elapsed);
           }
           
-          // Only update if the game state has actually changed
+          // Find the current user's player data
+          const currentPlayer = game.game_players?.find((player: any) => player.user_id === user?.id);
+          const userScore = currentPlayer?.score || 0;
+          const userFoundWords = currentPlayer?.found_words || [];
+          
+          console.log('[GameBoard] Player data:', { currentPlayer, userScore, userFoundWords });
+          
+          // Only update if the game state has actually changed or this is the initial load
           const currentIsActive = gameState.isActive;
           const wordChanged = game.base_word !== gameState.baseWord;
           const statusChanged = isGameActive !== currentIsActive;
           const gameStatusChanged = game.status !== gameState.gameStatus;
           
-          if (wordChanged || statusChanged || gameStatusChanged) {
-            console.log('[GameBoard] Game state changed, updating:', game);
-            
-            // Calculate time left based on started_at timestamp
-            let timeLeft = game.time_limit || 120;
-            if (game.started_at && isGameActive) {
-              const startTime = new Date(game.started_at).getTime();
-              const now = Date.now();
-              const elapsed = Math.floor((now - startTime) / 1000);
-              timeLeft = Math.max(0, game.time_limit - elapsed);
-            }
-            
-            // Find the current user's player data
-            const currentPlayer = game.game_players?.find((player: any) => player.user_id === user?.id);
-            const userScore = currentPlayer?.score || 0;
-            const userFoundWords = currentPlayer?.found_words || [];
-            
-            console.log('[GameBoard] Updated player data:', { currentPlayer, userScore, userFoundWords });
+          if (isInitialLoad || wordChanged || statusChanged || gameStatusChanged) {
+            console.log('[GameBoard] Updating game state:', { isInitialLoad, wordChanged, statusChanged, gameStatusChanged });
             
             // Update game state
             setGameState({
@@ -426,26 +393,72 @@ export function GameBoard({
               setShowGameOver(false);
               setRestoringGameOver(false);
             }
+          } else if (isGameActive) {
+            // Just sync time if nothing else changed but game is active
+            if (timeLeft !== gameState.timeLeft) {
+              setGameState({ timeLeft: timeLeft });
+            }
           }
+          
+          // Mark initial load as complete
+          if (isInitialLoad) {
+            isInitialLoad = false;
+            setLoading(false);
+          }
+          
+          pollCount++;
         }
       } catch (error) {
         consecutiveErrors++;
-        console.error('[GameBoard] Error polling game state:', error);
+        console.error('[GameBoard] Error loading game state:', error);
         
         // If we have too many consecutive errors, stop polling
         if (consecutiveErrors >= maxConsecutiveErrors) {
           console.error('[GameBoard] Too many consecutive errors, stopping polling');
           return;
         }
+        
+        // Mark initial load as complete even on error
+        if (isInitialLoad) {
+          isInitialLoad = false;
+          setLoading(false);
+        }
+      } finally {
+        // Clear the ongoing request reference
+        ongoingRequestRef.current = null;
       }
     };
 
-    // Only poll if game is active or finished, and not showing game over modal or restoring
+    // Initial load
+    console.log('[GameBoard] Starting initial load for game:', gameId);
+    loadGameState();
+
+    // Set up polling only if game is active or finished, and not showing game over modal or restoring
     if ((gameState.isActive || gameState.gameStatus === 'finished') && !showGameOver && !restoringGameOver) {
+      console.log('[GameBoard] Setting up polling for game:', gameId);
       // Poll every 5 seconds (reduced from 3 seconds for better performance)
-      const interval = setInterval(pollGameState, 5000);
-      return () => clearInterval(interval);
+      intervalId = setInterval(() => {
+        if (!isCleanedUp) {
+          console.log('[GameBoard] Polling game state for game:', gameId);
+          loadGameState();
+        }
+      }, 5000);
+    } else {
+      console.log('[GameBoard] Not setting up polling - game not active or showing game over');
     }
+
+    // Cleanup function
+    return () => {
+      console.log('[GameBoard] Cleaning up game state management for game:', gameId);
+      isCleanedUp = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      // Clear any ongoing request
+      ongoingRequestRef.current = null;
+      // Clear the setup flag
+      delete (window as any)[setupKey];
+    };
   }, [multiplayer, gameId, gameState.baseWord, gameState.isActive, showGameOver, restoringGameOver]);
 
   // Optimize scrambled letters calculation with useMemo
@@ -1021,6 +1034,39 @@ export function GameBoard({
     );
   }
 
+  // Calculate tile size based on container width and number of letters
+  useLayoutEffect(() => {
+    function updateTileSize() {
+      if (!tileContainerRef.current || !gameState.baseWord) return;
+      const containerWidth = tileContainerRef.current.offsetWidth;
+      const letterCount = gameState.baseWord.length;
+      let rows = 1;
+      let maxPerRow = letterCount;
+      if (letterCount > 7) {
+        rows = 2;
+        maxPerRow = Math.ceil(letterCount / 2);
+      }
+      // 2px margin per tile (1px each side)
+      const margin = 2;
+      // Calculate max tile size for the row
+      let size = Math.floor((containerWidth - margin * (maxPerRow - 1)) / maxPerRow);
+      // Clamp to desktop max (56px)
+      size = Math.min(size, 56);
+      setTileSize(size);
+    }
+    updateTileSize();
+    window.addEventListener('resize', updateTileSize);
+    return () => window.removeEventListener('resize', updateTileSize);
+  }, [gameState.baseWord]);
+
+  // Helper to split letters into rows for 8+ letters
+  function getRows(letters: string[]) {
+    if (letters.length <= 7) return [letters];
+    const firstRow = letters.slice(0, Math.ceil(letters.length / 2));
+    const secondRow = letters.slice(Math.ceil(letters.length / 2));
+    return [firstRow, secondRow];
+  }
+
   if (loading) {
     return (
       <>
@@ -1043,7 +1089,7 @@ export function GameBoard({
       <Navbar onSettingsClick={() => setShowSettings(true)} />
       {leaveButton}
       <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
-        <div className="w-full max-w-4xl mx-auto game-card rounded-2xl border-4 border-amber-600 shadow-2xl p-2 sm:p-4 md:p-6 relative">
+        <div className="w-full max-w-4xl mx-auto game-card rounded-none sm:rounded-2xl border-0 sm:border-4 border-amber-600 shadow-none sm:shadow-2xl p-0 sm:p-4 md:p-6 relative">
           {showSparkles && (
             <>
               <div className="sparkle" />
@@ -1053,7 +1099,7 @@ export function GameBoard({
             </>
           )}
 
-          <div className="flex justify-between items-center mb-2 sm:mb-4 md:mb-6">
+          <div className="flex justify-between items-center mb-2 sm:mb-4 md:mb-6 p-2 sm:p-0">
             <div className="flex items-center">
               <Clock className="mr-1 sm:mr-2 text-amber-300 h-4 w-4 sm:h-5 sm:w-5" />
               <span className="text-lg sm:text-xl md:text-2xl font-bold text-amber-100 font-mono">
@@ -1089,111 +1135,149 @@ export function GameBoard({
             </div>
           </div>
 
-          {/* Tiles first (above) on mobile and desktop */}
+          {/* Tiles (above) - Responsive, two rows if needed */}
           <div className="mb-4 sm:mb-6">
-            <div className="flex justify-center mb-2 sm:mb-4">
-              <div className="flex flex-wrap justify-center gap-1 sm:gap-2 md:gap-3">
-                {scrambledLetters.map((letter, i) => (
-                  <motion.div
-                    key={i}
-                    className={`letter-tile ${selectedIndices.includes(i) ? "opacity-50" : ""}`}
-                    whileHover={selectedIndices.includes(i) || gameState.timeLeft <= 0 || (multiplayer && !gameState.isActive) ? {} : { scale: 1.05 }}
-                    whileTap={selectedIndices.includes(i) || gameState.timeLeft <= 0 || (multiplayer && !gameState.isActive) ? {} : { scale: 0.95 }}
-                    onClick={() => !selectedIndices.includes(i) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(i)}
-                  >
-                    <span className="text-xl sm:text-2xl font-bold text-amber-900 z-10 relative">{letter.toUpperCase()}</span>
-                  </motion.div>
-                ))}
-              </div>
+            <div className="flex flex-col items-center mb-2 sm:mb-4" ref={tileContainerRef}>
+              {getRows(scrambledLetters).map((row, rowIdx) => (
+                <div
+                  key={rowIdx}
+                  className="flex justify-center items-center w-full"
+                  style={{ marginBottom: rowIdx === 0 && getRows(scrambledLetters).length > 1 ? 2 : 0 }}
+                >
+                  {row.map((letter, i) => {
+                    // Calculate the global index for selectedIndices
+                    const globalIdx = rowIdx === 0 ? i : getRows(scrambledLetters)[0].length + i;
+                    return (
+                      <div
+                        key={globalIdx}
+                        className={`letter-tile ${selectedIndices.includes(globalIdx) ? "opacity-50" : ""}`}
+                        style={{
+                          width: tileSize,
+                          height: tileSize,
+                          marginLeft: i === 0 ? 0 : 2,
+                          fontSize: tileSize * 0.8,
+                          minWidth: tileSize,
+                          minHeight: tileSize,
+                          maxWidth: 56,
+                          maxHeight: 56,
+                        }}
+                        onClick={() => !selectedIndices.includes(globalIdx) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
+                      >
+                        <span
+                          className="font-bold text-amber-900 z-10 relative"
+                          style={{ fontSize: tileSize * 0.8 }}
+                        >
+                          {letter.toUpperCase()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Slots below tiles */}
+          {/* Slots below tiles - Responsive, two rows if needed */}
           <div className="mb-4 sm:mb-6">
-            <div className="flex justify-center mb-2 sm:mb-4 p-2 sm:p-4">
-              <div className="flex space-x-1 sm:space-x-2 md:space-x-3">
-                {Array.from({ length: gameState.currentLetterCount }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`letter-slot ${
-                      i < currentWord.length ? "filled" : ""
-                    } ${i < currentWord.length ? "cursor-pointer" : ""}`}
-                    onClick={() => i < currentWord.length && handleSlotClick(i)}
-                    style={{
-                      ...(feedbackState === "correct" ? {
-                        backgroundColor: "#22c55e",
-                        boxShadow: "0 0 20px 4px #22c55e",
-                        transform: "scale(1.05)",
-                        transition: "all 0.3s ease"
-                      } : {}),
-                      ...(feedbackState === "incorrect" ? {
-                        backgroundColor: "#ef4444",
-                        boxShadow: "0 0 20px 4px #ef4444",
-                        transform: "scale(1.05)",
-                        transition: "all 0.3s ease",
-                        animation: "shake 0.6s ease-in-out"
-                      } : {}),
-                      ...(feedbackState === "bonus" ? {
-                        background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)",
-                        boxShadow: "0 0 30px 8px #fbbf24, 0 0 50px 12px #f59e0b",
-                        transform: "scale(1.1)",
-                        transition: "all 0.4s ease",
-                        position: "relative"
-                      } : {})
-                    }}
-                  >
-                    {i < currentWord.length && (
-                      <span className="text-xl sm:text-2xl font-bold text-amber-100">{currentWord[i].toUpperCase()}</span>
-                    )}
-                    {feedbackState === "bonus" && (
+            <div className="flex flex-col items-center mb-2 sm:mb-4 p-0 sm:p-4 relative">
+              {getRows(Array.from({ length: gameState.currentLetterCount })).map((row, rowIdx) => (
+                <div
+                  key={rowIdx}
+                  className="flex justify-center items-center w-full"
+                  style={{ marginBottom: rowIdx === 0 && getRows(Array.from({ length: gameState.currentLetterCount })).length > 1 ? 2 : 0 }}
+                >
+                  {row.map((_, i) => {
+                    const globalIdx = rowIdx === 0 ? i : getRows(Array.from({ length: gameState.currentLetterCount }))[0].length + i;
+                    const filled = globalIdx < currentWord.length;
+                    return (
                       <div
+                        key={globalIdx}
+                        className={`letter-tile ${filled ? '' : 'empty-slot'} ${filled ? 'cursor-pointer' : ''}`}
                         style={{
-                          position: "absolute",
-                          top: "-10px",
-                          left: "-10px",
-                          right: "-10px",
-                          bottom: "-10px",
-                          background: "radial-gradient(circle, #fbbf24 0%, transparent 70%)",
-                          animation: "sparkle-pulse 0.8s ease-in-out",
-                          zIndex: -1,
-                          pointerEvents: "none"
+                          width: tileSize,
+                          height: tileSize,
+                          marginLeft: i === 0 ? 0 : 2,
+                          fontSize: tileSize * 0.8,
+                          minWidth: tileSize,
+                          minHeight: tileSize,
+                          maxWidth: 56,
+                          maxHeight: 56,
+                          background: filled ? undefined : 'linear-gradient(145deg, #0f5d2a 0%, #1a7a3e 100%)',
+                          border: filled ? undefined : '2px solid #8b4513',
+                          boxShadow: filled ? undefined : 'inset 0 2px 4px rgba(0,0,0,0.3)',
                         }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
+                        onClick={() => filled && handleSlotClick(globalIdx)}
+                      >
+                        {filled && (
+                          <span
+                            className="font-bold text-amber-900"
+                            style={{ fontSize: tileSize * 0.8 }}
+                          >
+                            {currentWord[globalIdx].toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {/* Apply feedback animations to the entire slot row */}
+              {feedbackState !== "idle" && (
+                <div
+                  className="absolute inset-0 pointer-events-none rounded-md"
+                  style={{
+                    ...(feedbackState === "correct" ? {
+                      backgroundColor: "rgba(34, 197, 94, 0.2)",
+                      boxShadow: "0 0 20px 4px rgba(34, 197, 94, 0.3)",
+                      animation: "correct-flash 0.5s ease-in-out"
+                    } : {}),
+                    ...(feedbackState === "incorrect" ? {
+                      backgroundColor: "rgba(239, 68, 68, 0.2)",
+                      boxShadow: "0 0 20px 4px rgba(239, 68, 68, 0.3)",
+                      animation: "incorrect-flash 0.5s ease-in-out"
+                    } : {}),
+                    ...(feedbackState === "bonus" ? {
+                      background: "radial-gradient(circle, rgba(251, 191, 36, 0.3) 0%, transparent 70%)",
+                      boxShadow: "0 0 30px 8px rgba(251, 191, 36, 0.4)",
+                      animation: "bonus-flash 1s ease-in-out"
+                    } : {})
+                  }}
+                />
+              )}
             </div>
 
-            <div className="flex justify-center items-center space-x-1 sm:space-x-2 md:space-x-4 mb-4 sm:mb-6">
+            {/* Buttons - always reasonable size for tap */}
+            <div className="flex justify-center items-center space-x-2 mb-4 sm:mb-6 p-2 sm:p-0">
               <button
-                className="wood-button px-2 sm:px-4 md:px-6 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900 text-sm sm:text-base"
+                className="wood-button rounded-lg font-semibold text-amber-900 text-base"
+                style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: '8px 16px' }}
                 onClick={clearCurrentWord}
                 disabled={gameState.timeLeft <= 0 || currentWord.length === 0}
               >
                 Clear
               </button>
-
               <button
                 ref={submitButtonRef}
-                className="wood-button px-2 sm:px-4 md:px-6 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900 text-sm sm:text-base"
+                className="wood-button rounded-lg font-semibold text-amber-900 text-base"
+                style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: '8px 16px' }}
                 onClick={() => submitWord()}
                 disabled={isSubmitDisabled}
               >
                 Submit
               </button>
-
               <button
-                className="wood-button px-2 sm:px-3 md:px-4 py-1 sm:py-2 md:py-3 rounded-lg font-semibold text-amber-900"
+                className="wood-button rounded-lg font-semibold text-amber-900"
+                style={{ minWidth: 44, minHeight: 44, fontSize: 18, padding: '8px 12px' }}
                 onClick={shuffleLetters}
                 disabled={gameState.timeLeft <= 0}
               >
-                <Shuffle className="h-4 w-4 sm:h-5 sm:w-5" />
+                <Shuffle style={{ width: 24, height: 24 }} />
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 md:gap-6 p-2 sm:p-0">
             <div className="flex flex-col items-center">
               <ScoreDisplay score={gameState.score} username={getProperUsername()} />
 
@@ -1256,7 +1340,7 @@ export function GameBoard({
 
           {gameState.timeLeft <= 0 && (
             <motion.div
-              className="text-center mt-4"
+              className="text-center mt-4 p-2 sm:p-0"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, type: "spring" }}

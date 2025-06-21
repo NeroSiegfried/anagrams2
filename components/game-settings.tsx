@@ -42,8 +42,8 @@ export function GameSettings() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table">
-        <div className="w-full max-w-md mx-auto game-card border-4 border-amber-600 rounded-xl shadow-2xl p-3 sm:p-6">
+      <div className="min-h-screen flex items-center justify-center p-0 sm:p-4 pt-16 sm:pt-20 casino-table">
+        <div className="w-full max-w-md mx-auto game-card border-0 sm:border-4 border-amber-600 rounded-none sm:rounded-xl shadow-none sm:shadow-2xl p-3 sm:p-6 m-0 sm:m-0">
           <div className="flex items-center justify-center mb-4 sm:mb-6">
             <Settings className="h-6 w-6 sm:h-8 sm:w-8 text-amber-300 mr-2" />
             <h1 className="text-2xl sm:text-3xl font-bold text-amber-100">Game Settings</h1>
