@@ -86,23 +86,41 @@ export function MultiplayerLobby() {
       const timestamp = Date.now()
       const url = `/api/games/public?t=${timestamp}`
       
+      console.log('[MultiplayerLobby] Fetching public games...')
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
+          'Pragma': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        // Add timeout for deployment environments
+        signal: AbortSignal.timeout(10000) // 10 second timeout
       })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
       
       const data = await response.json()
       
-      if (response.ok) {
-        setGames(data.games || [])
+      console.log('[MultiplayerLobby] Received games data:', {
+        count: data.games?.length || 0,
+        timestamp: data.timestamp,
+        hasGames: !!data.games
+      })
+      
+      if (data.games) {
+        setGames(data.games)
       } else {
-        console.error('Failed to fetch games:', data.error)
+        console.error('No games array in response:', data)
+        setGames([])
       }
     } catch (error) {
       console.error('Error fetching games:', error)
+      // Don't clear games on error, keep existing state
+      // setGames([]) // Removed to prevent flickering
     } finally {
       setIsFetching(false)
     }
