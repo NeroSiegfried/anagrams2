@@ -1124,8 +1124,8 @@ export function GameBoard({
     <>
       <Navbar onSettingsClick={() => setShowSettings(true)} />
       {leaveButton}
-      <div className="min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
-        <div className="w-full max-w-4xl mx-auto game-card rounded-none sm:rounded-2xl border-0 sm:border-4 border-amber-600 shadow-none sm:shadow-2xl p-0 sm:p-4 md:p-6 relative">
+      <div className="h-screen flex flex-col items-center justify-start p-2 sm:p-4 pt-16 sm:pt-20 casino-table relative">
+        <div className="w-full max-w-4xl mx-auto game-card rounded-none sm:rounded-2xl border-0 sm:border-4 border-amber-600 shadow-none sm:shadow-2xl p-0 sm:p-4 md:p-6 relative h-full flex flex-col">
           {showSparkles && (
             <>
               <div className="sparkle" />
@@ -1135,7 +1135,7 @@ export function GameBoard({
             </>
           )}
 
-          <div className="flex justify-between items-center mb-2 sm:mb-4 md:mb-6 p-2 sm:p-0">
+          <div className="flex justify-between items-center mb-1 sm:mb-4 md:mb-6 p-2 sm:p-0">
             <div className="flex items-center">
               <Clock className="mr-1 sm:mr-2 text-amber-300 h-4 w-4 sm:h-5 sm:w-5" />
               <span className="text-lg sm:text-xl md:text-2xl font-bold text-amber-100 font-mono">
@@ -1171,49 +1171,76 @@ export function GameBoard({
             </div>
           </div>
 
-          {/* Tiles (above) - Responsive, two rows if needed */}
-          <div className="mb-4 sm:mb-6">
-            <div className="flex flex-col items-center mb-2 sm:mb-4" ref={tileContainerRef}>
-              {getRows(scrambledLetters).map((row, rowIdx) => (
-                <div
-                  key={rowIdx}
-                  className="flex justify-center items-center w-full"
-                  style={{ marginBottom: rowIdx === 0 && getRows(scrambledLetters).length > 1 ? 2 : 0 }}
-                >
-                  {row.map((letter, i) => {
-                    // Calculate the global index for selectedIndices
-                    const globalIdx = rowIdx === 0 ? i : getRows(scrambledLetters)[0].length + i;
-                    return (
-                      <div
-                        key={globalIdx}
-                        className={`letter-tile ${selectedIndices.includes(globalIdx) ? "opacity-50" : ""}`}
-                        style={{
-                          width: tileSize,
-                          height: tileSize,
-                          marginLeft: i === 0 ? 0 : 5,
-                          fontSize: tileSize * 0.8,
-                          minWidth: tileSize,
-                          minHeight: tileSize,
-                        }}
-                        onClick={() => !selectedIndices.includes(globalIdx) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
-                      >
-                        <span
-                          className="font-bold text-amber-900 z-10 relative"
-                          style={{ fontSize: tileSize * 0.8 }}
-                        >
-                          {letter.toUpperCase()}
-                        </span>
+          {/* 1. Score at the top */}
+          <div className="mb-1 sm:mb-4 md:mb-6 p-2 sm:p-0">
+            <div className="flex flex-col items-center">
+              <ScoreDisplay score={gameState.score} username={getProperUsername()} />
+
+              {multiplayer && (
+                <div className="mt-2 sm:mt-4 w-full score-card rounded-lg p-2 sm:p-4 shadow-md">
+                  <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 text-amber-100">Opponents</h3>
+                  <div className="space-y-1 sm:space-y-2">
+                    {opponents.map((opponent) => (
+                      <div key={opponent.id} className="flex justify-between items-center p-1 sm:p-2 felt-pattern rounded">
+                        <span className="text-sm sm:text-base text-amber-100">{opponent.username}</span>
+                        <span className="font-bold text-amber-300 text-sm sm:text-base">{opponentScores[opponent.id] || 0}</span>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* Slots below tiles - Responsive, two rows if needed */}
-          <div className="mb-4 sm:mb-6">
-            <div className="flex flex-col items-center mb-2 sm:mb-4 p-0 sm:p-4 relative">
+          {/* 2. Progress - more compact on mobile */}
+          <div className="mb-1 sm:mb-4 md:mb-6 p-2 sm:p-0 flex-grow">
+            <div className="score-card rounded-lg p-2 sm:p-4 shadow-lg h-full" style={{ 
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div className="flex items-center justify-between mb-1 sm:mb-2 md:mb-3">
+                <h2 className="text-base sm:text-lg md:text-xl font-bold text-amber-100">
+                  {showFullWordList ? 'Found Words' : 'Progress'}
+                </h2>
+                {multiplayer && (
+                  <button
+                    onClick={() => setShowFullWordList(!showFullWordList)}
+                    className="text-xs text-amber-300 hover:text-amber-100 underline"
+                  >
+                    {showFullWordList ? 'Show Count' : 'Show List'}
+                  </button>
+                )}
+              </div>
+              
+              {showFullWordList ? (
+                <div className="flex-1 overflow-y-auto">
+                  {gameState.foundWords.length === 0 ? (
+                    <p className="text-amber-300 italic text-center text-sm">No words found yet...</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {gameState.foundWords.map((word, index) => (
+                        <div key={word} className="flex justify-between items-center p-1 felt-pattern rounded text-sm">
+                          <span className="text-amber-100 font-medium">{word.toUpperCase()}</span>
+                          <span className="font-bold text-amber-300 bg-amber-900/30 px-1 py-0.5 rounded text-xs">
+                            +{calculateScore(word.length)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center flex-1 flex flex-col justify-center">
+                  <p className="text-lg sm:text-2xl md:text-3xl font-bold text-amber-300 mb-1 sm:mb-2">{gameState.foundWords.length}</p>
+                  <p className="text-xs sm:text-sm md:text-base text-amber-200">Words Found</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 3. Slots */}
+          <div className="mb-3 sm:mb-6 md:mb-8">
+            <div className="flex flex-col items-center mb-1 sm:mb-2 md:mb-4 p-0 sm:p-4 relative">
               {getRows(Array.from({ length: gameState.currentLetterCount })).map((row, rowIdx) => (
                 <div
                   key={rowIdx}
@@ -1221,7 +1248,7 @@ export function GameBoard({
                   style={{ marginBottom: rowIdx === 0 && getRows(Array.from({ length: gameState.currentLetterCount })).length > 1 ? 2 : 0 }}
                 >
                   {row.map((_, i) => {
-                    const globalIdx = rowIdx === 0 ? i : getRows(Array.from({ length: gameState.currentLetterCount }))[0].length + i;
+                    const globalIdx = rowIdx === 0 ? i : getRows(Array.from({ length: gameState.currentLetterCount })).length + i;
                     const filled = globalIdx < currentWord.length;
                     return (
                       <div
@@ -1278,101 +1305,88 @@ export function GameBoard({
                 />
               )}
             </div>
-
-            {/* Buttons - always reasonable size for tap */}
-            <div className="flex justify-center items-center space-x-2 mb-4 sm:mb-6 p-2 sm:p-0">
-              <button
-                className="wood-button rounded-lg font-semibold text-amber-900 text-base"
-                style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: '8px 16px' }}
-                onClick={clearCurrentWord}
-                disabled={gameState.timeLeft <= 0 || currentWord.length === 0}
-              >
-                Clear
-              </button>
-              <button
-                ref={submitButtonRef}
-                className="wood-button rounded-lg font-semibold text-amber-900 text-base"
-                style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: '8px 16px' }}
-                onClick={() => submitWord()}
-                disabled={isSubmitDisabled}
-              >
-                Submit
-              </button>
-              <button
-                className="wood-button rounded-lg font-semibold text-amber-900"
-                style={{ minWidth: 44, minHeight: 44, fontSize: 18, padding: '8px 12px' }}
-                onClick={shuffleLetters}
-                disabled={gameState.timeLeft <= 0}
-              >
-                <Shuffle style={{ width: 24, height: 24 }} />
-              </button>
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 md:gap-6 p-2 sm:p-0">
-            <div className="flex flex-col items-center">
-              <ScoreDisplay score={gameState.score} username={getProperUsername()} />
+          {/* 4. Buttons - reordered: Clear, Shuffle, Submit */}
+          <div className="flex justify-center items-center space-x-2 mb-3 sm:mb-6 md:mb-8 p-2 sm:p-0">
+            <button
+              className="wood-button rounded-lg font-semibold text-amber-900 text-base"
+              style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: '8px 16px' }}
+              onClick={clearCurrentWord}
+              disabled={gameState.timeLeft <= 0 || currentWord.length === 0}
+            >
+              Clear
+            </button>
+            <button
+              className="wood-button rounded-lg font-semibold text-amber-900"
+              style={{ minWidth: 44, minHeight: 44, fontSize: 18, padding: '8px 12px' }}
+              onClick={shuffleLetters}
+              disabled={gameState.timeLeft <= 0}
+            >
+              <Shuffle style={{ width: 24, height: 24 }} />
+            </button>
+            <button
+              ref={submitButtonRef}
+              className="wood-button rounded-lg font-semibold text-white text-base"
+              style={{ 
+                minWidth: 64, 
+                minHeight: 44, 
+                fontSize: 18, 
+                padding: '8px 16px',
+                background: 'linear-gradient(145deg, #059669 0%, #10b981 100%)',
+                border: '2px solid #047857',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+              }}
+              onClick={() => submitWord()}
+              disabled={isSubmitDisabled}
+            >
+              Submit
+            </button>
+          </div>
 
-              {multiplayer && (
-                <div className="mt-2 sm:mt-4 w-full score-card rounded-lg p-2 sm:p-4 shadow-md">
-                  <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 text-amber-100">Opponents</h3>
-                  <div className="space-y-1 sm:space-y-2">
-                    {opponents.map((opponent) => (
-                      <div key={opponent.id} className="flex justify-between items-center p-1 sm:p-2 felt-pattern rounded">
-                        <span className="text-sm sm:text-base text-amber-100">{opponent.username}</span>
-                        <span className="font-bold text-amber-300 text-sm sm:text-base">{opponentScores[opponent.id] || 0}</span>
+          {/* 5. Tiles at the bottom with comfortable thumb reach */}
+          <div className="mt-auto mb-30 sm:mb-36 md:mb-48">
+            <div className="flex flex-col items-center mb-1 sm:mb-2 md:mb-4" ref={tileContainerRef}>
+              {getRows(scrambledLetters).map((row, rowIdx) => (
+                <div
+                  key={rowIdx}
+                  className="flex justify-center items-center w-full"
+                  style={{ marginBottom: rowIdx === 0 && getRows(scrambledLetters).length > 1 ? 2 : 0 }}
+                >
+                  {row.map((letter, i) => {
+                    // Calculate the global index for selectedIndices
+                    const globalIdx = rowIdx === 0 ? i : getRows(scrambledLetters)[0].length + i;
+                    return (
+                      <div
+                        key={globalIdx}
+                        className={`letter-tile ${selectedIndices.includes(globalIdx) ? "opacity-50" : ""}`}
+                        style={{
+                          width: tileSize,
+                          height: tileSize,
+                          marginLeft: i === 0 ? 0 : 5,
+                          fontSize: tileSize * 0.8,
+                          minWidth: tileSize,
+                          minHeight: tileSize,
+                        }}
+                        onClick={() => !selectedIndices.includes(globalIdx) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
+                      >
+                        <span
+                          className="font-bold text-amber-900 z-10 relative"
+                          style={{ fontSize: tileSize * 0.8 }}
+                        >
+                          {letter.toUpperCase()}
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-
-            {/* Show found words count or full list based on toggle */}
-            <div className="score-card rounded-lg p-2 sm:p-4 shadow-lg">
-              <div className="flex items-center justify-between mb-2 sm:mb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-amber-100">
-                  {showFullWordList ? 'Found Words' : 'Progress'}
-                </h2>
-                {multiplayer && (
-                  <button
-                    onClick={() => setShowFullWordList(!showFullWordList)}
-                    className="text-xs text-amber-300 hover:text-amber-100 underline"
-                  >
-                    {showFullWordList ? 'Show Count' : 'Show List'}
-                  </button>
-                )}
-              </div>
-              
-              {showFullWordList ? (
-                <div className="max-h-48 overflow-y-auto">
-                  {gameState.foundWords.length === 0 ? (
-                    <p className="text-amber-300 italic text-center text-sm">No words found yet...</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {gameState.foundWords.map((word, index) => (
-                        <div key={word} className="flex justify-between items-center p-1 felt-pattern rounded text-sm">
-                          <span className="text-amber-100 font-medium">{word.toUpperCase()}</span>
-                          <span className="font-bold text-amber-300 bg-amber-900/30 px-1 py-0.5 rounded text-xs">
-                            +{calculateScore(word.length)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center">
-                  <p className="text-2xl sm:text-3xl font-bold text-amber-300 mb-1 sm:mb-2">{gameState.foundWords.length}</p>
-                  <p className="text-sm sm:text-base text-amber-200">Words Found</p>
-                </div>
-              )}
+              ))}
             </div>
           </div>
 
           {gameState.timeLeft <= 0 && (
             <motion.div
-              className="text-center mt-4 p-2 sm:p-0"
+              className="text-center mt-1 sm:mt-4 p-2 sm:p-0"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, type: "spring" }}
