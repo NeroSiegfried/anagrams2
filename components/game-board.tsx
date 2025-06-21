@@ -540,6 +540,27 @@ export function GameBoard({
     setSelectedIndices((prev) => prev.filter((_, i) => i !== slotIndex))
   }
 
+  const handleTileClick = (index: number) => {
+    if (gameState.timeLeft <= 0 || (!multiplayer && !gameState.isActive)) return
+
+    // If tile is already selected, unselect it
+    if (selectedIndices.includes(index)) {
+      // Find the position of this tile in the current word
+      const wordIndex = selectedIndices.indexOf(index)
+      if (wordIndex !== -1) {
+        // Remove the letter from the current word
+        setCurrentWord((prev) => prev.filter((_, i) => i !== wordIndex))
+        // Remove the index from selectedIndices
+        setSelectedIndices((prev) => prev.filter((_, i) => i !== wordIndex))
+      }
+    } else {
+      // If tile is not selected and we have room, select it
+      if (currentWord.length < gameState.currentLetterCount) {
+        addLetterToWord(index)
+      }
+    }
+  }
+
   // True random shuffle for the shuffle button
   function scrambleLetters(word: string): string[] {
     const letters = word.split("")
@@ -1072,8 +1093,8 @@ export function GameBoard({
           size = 56;
         }
       } else {
-        // Mobile: clamp to 80px maximum for good touch interaction
-        size = Math.min(size, 80);
+        // Mobile: clamp to 60px maximum for better fit (reduced from 80px)
+        size = Math.min(size, 60);
       }
       
       setTileSize(size);
@@ -1089,7 +1110,7 @@ export function GameBoard({
     if (!tileContainerRef.current) return [letters];
     const containerWidth = tileContainerRef.current.offsetWidth;
     const isDesktop = window.innerWidth >= 768;
-    const maxTileSize = isDesktop ? 56 : 80;
+    const maxTileSize = isDesktop ? 56 : 60; // Reduced mobile size
     const gap = 5;
     const totalGaps = letters.length - 1;
     const requiredWidth = letters.length * maxTileSize + totalGaps * gap;
@@ -1248,7 +1269,14 @@ export function GameBoard({
                   style={{ marginBottom: rowIdx === 0 && getRows(Array.from({ length: gameState.currentLetterCount })).length > 1 ? 2 : 0 }}
                 >
                   {row.map((_, i) => {
-                    const globalIdx = rowIdx === 0 ? i : getRows(Array.from({ length: gameState.currentLetterCount })).length + i;
+                    // Calculate the global index correctly for multi-row layouts
+                    const rows = getRows(Array.from({ length: gameState.currentLetterCount }));
+                    let globalIdx = 0;
+                    for (let r = 0; r < rowIdx; r++) {
+                      globalIdx += rows[r].length;
+                    }
+                    globalIdx += i;
+                    
                     const filled = globalIdx < currentWord.length;
                     return (
                       <div
@@ -1354,8 +1382,14 @@ export function GameBoard({
                   style={{ marginBottom: rowIdx === 0 && getRows(scrambledLetters).length > 1 ? 2 : 0 }}
                 >
                   {row.map((letter, i) => {
-                    // Calculate the global index for selectedIndices
-                    const globalIdx = rowIdx === 0 ? i : getRows(scrambledLetters)[0].length + i;
+                    // Calculate the global index correctly for multi-row layouts
+                    const rows = getRows(scrambledLetters);
+                    let globalIdx = 0;
+                    for (let r = 0; r < rowIdx; r++) {
+                      globalIdx += rows[r].length;
+                    }
+                    globalIdx += i;
+                    
                     return (
                       <div
                         key={globalIdx}
@@ -1368,7 +1402,7 @@ export function GameBoard({
                           minWidth: tileSize,
                           minHeight: tileSize,
                         }}
-                        onClick={() => !selectedIndices.includes(globalIdx) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
+                        onClick={() => gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && handleTileClick(globalIdx)}
                       >
                         <span
                           className="font-bold text-amber-900 z-10 relative"

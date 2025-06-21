@@ -10,10 +10,12 @@ import { useGame } from "@/lib/game-context"
 import { useToast } from "@/components/ui/use-toast"
 import { Settings, Volume2, Music } from "lucide-react"
 import { Navbar } from "@/components/navbar"
+import { useRouter } from "next/navigation"
 
 export function GameSettings() {
   const { gameSettings, updateSettings } = useGame()
   const { toast } = useToast()
+  const router = useRouter()
   const [isHydrated, setIsHydrated] = useState(false)
 
   const [letterCount, setLetterCount] = useState(gameSettings.letterCount)
@@ -37,6 +39,9 @@ export function GameSettings() {
       title: "Settings saved",
       description: "Your game settings have been updated",
     })
+
+    // Redirect back to landing page
+    router.push('/')
   }
 
   return (
@@ -126,9 +131,18 @@ export function GameSettings() {
                 </div>
               </motion.div>
 
-              <Button onClick={handleSaveSettings} className="w-full wood-button text-amber-900 font-semibold py-2 sm:py-3 text-sm sm:text-base">
-                Save Settings
-              </Button>
+              <div className="flex space-x-3">
+                <Button onClick={handleSaveSettings} className="flex-1 wood-button text-amber-900 font-semibold py-2 sm:py-3 text-sm sm:text-base">
+                  Save Settings
+                </Button>
+                <Button 
+                  onClick={() => router.push('/')} 
+                  variant="outline"
+                  className="flex-1 border-amber-300 bg-amber-900/20 text-amber-100 hover:bg-amber-600 hover:text-amber-900 py-2 sm:py-3 text-sm sm:text-base"
+                >
+                  Back to Home
+                </Button>
+              </div>
             </div>
           )}
         </div>
