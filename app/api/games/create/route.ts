@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
     // Ensure username is not undefined
     const playerUsername = username || createdBy;
 
-    console.log('[Create Game API] Creating game with:', { isPublic, createdBy, wordLength, timeLimit, username: playerUsername });
+    // Multiplayer log: game creation parameters
+    console.info('[Multiplayer] Creating game', { isPublic, createdBy, wordLength, timeLimit, username: playerUsername });
 
     // Create a fresh database connection for this request
     const sql = neon(process.env.DATABASE_URL!)
@@ -28,6 +29,8 @@ export async function POST(request: NextRequest) {
       const wordResult = await sql`
         SELECT word FROM words WHERE length = ${wordLength} ORDER BY random() LIMIT 1
       `
+      // Multiplayer log: DB word selection
+      console.info('[Multiplayer] DB word selection result', wordResult)
 
       if (!wordResult || wordResult.length === 0) {
         await sql`ROLLBACK`
@@ -38,6 +41,8 @@ export async function POST(request: NextRequest) {
       }
 
       const baseWord = wordResult[0].word
+      // Multiplayer log: selected base word
+      console.info('[Multiplayer] Selected base word', baseWord)
 
       // Create the game
       const gameResult = await sql`
@@ -55,6 +60,8 @@ export async function POST(request: NextRequest) {
       }
 
       const game = gameResult[0]
+      // Multiplayer log: game object after creation
+      console.info('[Multiplayer] Game object after creation', game)
 
       // Add the creator as the first player
       await sql`
@@ -71,7 +78,8 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       await sql`ROLLBACK`
-      console.error('Error in create game transaction:', error)
+      // Multiplayer log: error in transaction
+      console.info('[Multiplayer] Error in create game transaction', error)
       return NextResponse.json(
         { error: 'Failed to create game' },
         { status: 500 }
@@ -79,7 +87,8 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error in create game:', error)
+    // Multiplayer log: error in handler
+    console.info('[Multiplayer] Error in create game handler', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

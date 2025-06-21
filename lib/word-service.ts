@@ -1057,18 +1057,19 @@ const FALLBACK_WORDS = [
 
 export async function validateWord(word: string): Promise<boolean> {
   try {
-    console.log('[Word Service] Validating word:', word);
+    console.info('[validateWord] Starting validation for word:', word);
     const sql = await query(
       "SELECT id FROM words WHERE word = $1 LIMIT 1",
       [word.toLowerCase()]
     )
+    console.info('[validateWord] Database query result:', { word, result: sql, rowCount: sql.rows.length });
     const isValid = sql.rows.length > 0;
-    console.log('[Word Service] Database validation result:', { word, isValid, rowCount: sql.rows.length });
+    console.info('[validateWord] Validation result:', { word, isValid });
     return isValid;
   } catch (error: any) {
-    console.warn("Error validating word, using offline fallback:", error)
+    console.warn("[validateWord] Error validating word, using offline fallback:", error)
     const fallbackValid = FALLBACK_WORDS.includes(word.toLowerCase());
-    console.log('[Word Service] Fallback validation result:', { word, fallbackValid });
+    console.info('[validateWord] Fallback validation result:', { word, fallbackValid });
     return fallbackValid;
   }
 }

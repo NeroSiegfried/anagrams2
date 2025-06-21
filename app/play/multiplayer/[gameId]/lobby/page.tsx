@@ -67,14 +67,25 @@ export default function GameLobbyPage() {
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
-    // Use username if it's not a UUID
-    if (player.username && !player.username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      return player.username;
+    return player.username || 'Guest'
+  }
+
+  const getProperUsernameForUser = (user: any) => {
+    if (user.displayName) {
+      return user.displayName
     }
     
-    // Fallback to user ID (shouldn't happen)
-    return player.user_id;
-  };
+    if (user.username && !user.username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      return user.username
+    }
+    
+    if (user.email) {
+      const emailPart = user.email.split('@')[0]
+      return emailPart.charAt(0).toUpperCase() + emailPart.slice(1)
+    }
+    
+    return user.id
+  }
 
   // Join the game automatically when accessing via URL
   const joinGame = async () => {
@@ -90,7 +101,7 @@ export default function GameLobbyPage() {
         body: JSON.stringify({
           gameId: gameId,
           userId: user.id,
-          username: user.username || user.displayName || user.id
+          username: getProperUsernameForUser(user)
         })
       })
 
@@ -203,29 +214,13 @@ export default function GameLobbyPage() {
       const interval = setInterval(() => {
         console.log('[Lobby] Polling for updates...');
         fetchLobbyInfo();
-      }, 2000) // Refresh every 2 seconds
+      }, 1000) // Refresh every 1 second for more real-time updates
       return () => {
         console.log('[Lobby] Clearing polling interval');
         clearInterval(interval);
       }
     }
   }, [gameId, hasJoined])
-
-  // Force polling to start after a delay (for debugging)
-  useEffect(() => {
-    console.log('[Lobby] Force polling setup');
-    if (gameId) {
-      const forceInterval = setInterval(() => {
-        console.log('[Lobby] FORCE POLLING - fetching lobby info');
-        fetchLobbyInfo();
-      }, 3000) // Force refresh every 3 seconds
-      
-      return () => {
-        console.log('[Lobby] Clearing force polling interval');
-        clearInterval(forceInterval);
-      }
-    }
-  }, [gameId])
 
   useEffect(() => {
     console.log('[Lobby] Game data updated:', game);
@@ -743,6 +738,10 @@ export default function GameLobbyPage() {
                   <p className="text-amber-200">Players</p>
                   <p className="text-amber-100">{game.player_count}/{game.max_players}</p>
                 </div>
+                <div>
+                  <p className="text-amber-200">Round</p>
+                  <p className="text-amber-100">{game.current_round}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -815,9 +814,14 @@ export default function GameLobbyPage() {
                   >
                     <div className="flex items-center space-x-3">
                       {player.is_host && <Crown className="h-4 w-4 text-amber-300" />}
-                      <span className="text-amber-100 font-medium">
-                        {getProperUsername(player)}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-amber-100 font-medium">
+                          {getProperUsername(player)}
+                        </span>
+                        <Badge variant="outline" className="text-xs border-amber-400 text-amber-400">
+                          {player.score} pts
+                        </Badge>
+                      </div>
                       {player.is_host && (
                         <Badge variant="secondary" className="text-xs">
                           Host

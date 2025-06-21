@@ -23,6 +23,10 @@ interface Game {
   created_at: string
   player_count: number
   available_slots: number
+  players?: Array<{
+    username: string
+    score: number
+  }>
   game_players: Array<{
     id: string
     user_id: string
@@ -415,6 +419,18 @@ export function MultiplayerLobby() {
                         ? game.creator_username 
                         : 'Anonymous'}
                     </p>
+                    {game.players && game.players.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-amber-300 mb-1">Players:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {game.players.map((player, index) => (
+                            <Badge key={index} variant="outline" className="text-xs border-amber-400 text-amber-400">
+                              {player.username}: {player.score} pts
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <p className="text-xs text-amber-300 mt-1">
                       Created {new Date(game.created_at).toLocaleTimeString()}
                     </p>

@@ -51,6 +51,15 @@ export async function GET(
       const now = Date.now();
       const elapsedSeconds = Math.floor((now - startTime) / 1000);
 
+      console.log('[Lobby API] Time check:', { 
+        gameId, 
+        status: game.status, 
+        startedAt: game.started_at,
+        timeLimit: game.time_limit,
+        elapsedSeconds,
+        shouldFinish: elapsedSeconds > game.time_limit
+      });
+
       if (elapsedSeconds > game.time_limit) {
         // Time is up, update game status to finished
         await sql`UPDATE games SET status = 'finished', updated_at = NOW() WHERE id = ${gameId}`;
@@ -64,18 +73,67 @@ export async function GET(
       game.base_word = game.base_word.split('').map(() => ' ').join('');
     }
 
-    // Get players for this game
+    // Add valid words for active games (send the actual array for client-side validation)
+    if (game.status === 'active' && game.valid_words) {
+      game.valid_words_count = game.valid_words.length;
+      // Send the actual valid_words array to the client for client-side validation
+      // This eliminates the need for database queries on every word submission
+    } else {
+      game.valid_words_count = 0;
+      game.valid_words = [];
+    }
+
+    // Get players for this game, ordered by score (highest first)
     const playersResult = await sql`
-      SELECT id, user_id, username, score, is_host, ready
-      FROM game_players
-      WHERE game_id = ${gameId}
-      ORDER BY joined_at ASC
+      SELECT 
+        gp.id, 
+        gp.user_id, 
+        gp.username, 
+        gp.score, 
+        gp.is_host, 
+        gp.ready
+      FROM game_players gp
+      WHERE gp.game_id = ${gameId}
+      ORDER BY gp.score DESC, gp.joined_at ASC
     `;
+
+    console.log('[Lobby API] Raw players result:', playersResult);
+
+    // Get found words for each player from game_submissions
+    const foundWordsResult = await sql`
+      SELECT 
+        user_id,
+        ARRAY_AGG(word) as found_words
+      FROM game_submissions 
+      WHERE game_id = ${gameId}
+      GROUP BY user_id
+    `;
+
+    console.log('[Lobby API] Found words result:', foundWordsResult);
+
+    // Create a map of user_id to found_words for quick lookup
+    const foundWordsMap = new Map();
+    foundWordsResult.forEach((row: any) => {
+      foundWordsMap.set(row.user_id, row.found_words || []);
+    });
+
+    // Process players to use the stored username and include found words
+    const processedPlayers = playersResult.map(player => ({
+      id: player.id,
+      user_id: player.user_id,
+      username: player.username || 'Guest',
+      score: player.score || 0,
+      is_host: player.is_host,
+      ready: player.ready,
+      found_words: foundWordsMap.get(player.user_id) || []
+    }));
+
+    console.log('[Lobby API] Processed players:', processedPlayers);
 
     const gameWithPlayers = {
       ...game,
-      game_players: playersResult || [],
-      player_count: playersResult?.length || 0
+      game_players: processedPlayers || [],
+      player_count: processedPlayers?.length || 0
     }
 
     return NextResponse.json({ game: gameWithPlayers })

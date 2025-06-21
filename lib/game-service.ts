@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import { neon } from '@neondatabase/serverless'
 
 export interface Game {
   id: string
@@ -103,38 +104,191 @@ export async function submitScore(
   wordsList: string[],
   userId: string | null = null,
 ): Promise<Score> {
-  // Guest mode - return mock score
-  return {
-    id: Math.random().toString(36).substring(2, 9),
-    game_id: gameId,
-    user_id: null,
-    username,
-    score,
-    words_found: wordsFound,
-    words_list: wordsList,
-    completed_at: new Date().toISOString(),
-    is_guest: true,
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    
+    // Insert the score into the database - match the actual Supabase table schema
+    const result = await sql`
+      INSERT INTO scores (game_id, user_id, username, score, words_found, words_list, completed_at, is_guest)
+      VALUES (${gameId}, ${userId}, ${username}, ${score}, ${wordsFound}, ${wordsList}, NOW(), ${!userId})
+      RETURNING id, game_id, user_id, username, score, words_found, words_list, completed_at, is_guest
+    `
+    
+    if (result && result.length > 0) {
+      const savedScore = result[0]
+      console.log('[Game Service] Score saved successfully:', { gameId, username, score, wordsFound })
+      return {
+        id: savedScore.id,
+        game_id: savedScore.game_id,
+        user_id: savedScore.user_id,
+        username: savedScore.username,
+        score: savedScore.score,
+        words_found: savedScore.words_found,
+        words_list: savedScore.words_list || [],
+        completed_at: savedScore.completed_at,
+        is_guest: savedScore.is_guest
+      }
+    } else {
+      throw new Error('Failed to save score to database')
+    }
+  } catch (error) {
+    console.error('[Game Service] Error saving score:', error)
+    // Fallback to mock score if database save fails
+    return {
+      id: Math.random().toString(36).substring(2, 9),
+      game_id: gameId,
+      user_id: userId,
+      username,
+      score,
+      words_found: wordsFound,
+      words_list: wordsList,
+      completed_at: new Date().toISOString(),
+      is_guest: !userId,
+    }
   }
 }
 
 export async function getScoresByGameId(gameId: string): Promise<Score[]> {
-  // Guest mode - return empty array
-  return []
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    
+    const result = await sql`
+      SELECT 
+        s.id, 
+        s.game_id, 
+        s.user_id, 
+        s.username,
+        s.score, 
+        s.words_found, 
+        s.words_list,
+        s.completed_at,
+        s.is_guest
+      FROM scores s
+      WHERE s.game_id = ${gameId}
+      ORDER BY s.score DESC, s.completed_at ASC
+    `
+    
+    return result.map(row => ({
+      id: row.id,
+      game_id: row.game_id,
+      user_id: row.user_id,
+      username: row.username || 'Guest',
+      score: row.score,
+      words_found: row.words_found,
+      words_list: row.words_list || [],
+      completed_at: row.completed_at,
+      is_guest: row.is_guest
+    }))
+  } catch (error) {
+    console.error('[Game Service] Error getting scores:', error)
+    return []
+  }
 }
 
 export async function getUserScores(userId: string, limit = 10): Promise<Score[]> {
-  // Guest mode - return empty array
-  return []
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    
+    const result = await sql`
+      SELECT 
+        s.id, 
+        s.game_id, 
+        s.user_id, 
+        s.username,
+        s.score, 
+        s.words_found, 
+        s.words_list,
+        s.completed_at,
+        s.is_guest
+      FROM scores s
+      WHERE s.user_id = ${userId}
+      ORDER BY s.score DESC, s.completed_at DESC
+      LIMIT ${limit}
+    `
+    
+    return result.map(row => ({
+      id: row.id,
+      game_id: row.game_id,
+      user_id: row.user_id,
+      username: row.username || 'Guest',
+      score: row.score,
+      words_found: row.words_found,
+      words_list: row.words_list || [],
+      completed_at: row.completed_at,
+      is_guest: row.is_guest
+    }))
+  } catch (error) {
+    console.error('[Game Service] Error getting user scores:', error)
+    return []
+  }
 }
 
 export async function getTopScores(limit = 10): Promise<Score[]> {
-  // Guest mode - return empty array
-  return []
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    
+    const result = await sql`
+      SELECT 
+        s.id, 
+        s.game_id, 
+        s.user_id, 
+        s.username,
+        s.score, 
+        s.words_found, 
+        s.words_list,
+        s.completed_at,
+        s.is_guest
+      FROM scores s
+      ORDER BY s.score DESC, s.completed_at ASC
+      LIMIT ${limit}
+    `
+    
+    return result.map(row => ({
+      id: row.id,
+      game_id: row.game_id,
+      user_id: row.user_id,
+      username: row.username || 'Guest',
+      score: row.score,
+      words_found: row.words_found,
+      words_list: row.words_list || [],
+      completed_at: row.completed_at,
+      is_guest: row.is_guest
+    }))
+  } catch (error) {
+    console.error('[Game Service] Error getting top scores:', error)
+    return []
+  }
 }
 
 export async function getLeaderboard(limit = 10): Promise<any[]> {
-  // Guest mode - return empty array
-  return []
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    
+    const result = await sql`
+      SELECT 
+        s.username,
+        COUNT(*) as games_played,
+        AVG(s.score) as avg_score,
+        MAX(s.score) as best_score,
+        SUM(s.score) as total_score
+      FROM scores s
+      WHERE s.user_id IS NOT NULL AND s.is_guest = false
+      GROUP BY s.username
+      ORDER BY total_score DESC, avg_score DESC
+      LIMIT ${limit}
+    `
+    
+    return result.map(row => ({
+      username: row.username || 'Guest',
+      games_played: row.games_played,
+      avg_score: Math.round(row.avg_score),
+      best_score: row.best_score,
+      total_score: row.total_score
+    }))
+  } catch (error) {
+    console.error('[Game Service] Error getting leaderboard:', error)
+    return []
+  }
 }
 
 function generateGameCode(): string {

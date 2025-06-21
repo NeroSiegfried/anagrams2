@@ -27,6 +27,8 @@ interface GameState {
   currentRound: number
   gameId: string | null
   currentLetterCount: number // Track the current game's letter count
+  validWords: string[] // Valid words for client-side validation (multiplayer)
+  gameStatus: string // Track game status: 'waiting', 'active', 'finished'
 }
 
 interface GameContextType {
@@ -63,6 +65,8 @@ const defaultGameState: GameState = {
   currentRound: 0,
   gameId: null,
   currentLetterCount: 6, // Default letter count
+  validWords: [], // Default empty array for valid words
+  gameStatus: 'waiting', // Default game status
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined)
@@ -169,6 +173,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       currentRound: gameState.currentRound + 1,
       gameId: newGameId,
       currentLetterCount: letterCount, // Set the current game's letter count
+      validWords: subwords.map(w => w.word), // Set valid words for client-side validation
+      gameStatus: 'active', // Set game status to active
     })
     setLoadingWords(false)
   }, [gameSettings, gameState.currentRound, setAllSubWords])

@@ -1,107 +1,139 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
-import { findAllPossibleWords, type Word } from '@/lib/word-service'
+import { neon } from '@neondatabase/serverless'
 
-// This should be kept in sync with the client-side scoring
-function calculateScore(wordLength: number): number {
-  if (wordLength < 3) return 0;
-  if (wordLength === 3) return 100;
-  if (wordLength === 4) return 300;
-  if (wordLength === 5) return 1200;
-  if (wordLength >= 6) return 2000 + 400 * (wordLength - 6);
-  return 0; // Should not happen for valid words
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const gameId = params.id
-    const { userId, word } = await request.json()
+    const { userId, username, word, isValid } = await request.json()
 
-    if (!gameId || !userId || !word ) {
+    if (!gameId || !userId || !username || !word) {
+      console.info('[Multiplayer] Missing required fields', { gameId, userId, username, word });
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
     }
 
-    // --- Server-side validation ---
-    
-    // 1. Get the base word for the game
-    const gameResult = await query('SELECT base_word FROM games WHERE id = $1', [gameId]);
-    if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-    }
-    const baseWord = gameResult.rows[0].base_word;
+    // Multiplayer log: word submission parameters
+    console.info('[Multiplayer] Word submission', { gameId, userId, username, word, isValid });
 
-    // 2. Get all possible words
-    const possibleWords = await findAllPossibleWords(baseWord);
-    const possibleWordSet = new Set(possibleWords.map((w: Word) => w.word.toLowerCase()));
+    const sql = neon(process.env.DATABASE_URL!)
 
-    // 3. Validate submitted word
-    if (!possibleWordSet.has(word.toLowerCase())) {
-      return NextResponse.json({ error: 'Invalid word' }, { status: 400 });
-    }
+    // Get the game to check status and basic validation
+    const gameResult = await sql`
+      SELECT g.base_word, g.status, g.time_limit, g.started_at
+      FROM games g
+      WHERE g.id = ${gameId}
+    `
 
-    // --- Validation Passed, proceed to update score ---
-
-    // Check if player is in the game and get their current state
-    const playerResult = await query(`
-      SELECT id, score, found_words FROM game_players 
-      WHERE game_id = $1 AND user_id = $2
-    `, [gameId, userId])
-
-    if (!playerResult || !playerResult.rows || playerResult.rows.length === 0) {
+    if (!gameResult || gameResult.length === 0) {
+      console.info('[Multiplayer] Game not found', { gameId });
       return NextResponse.json(
-        { error: 'Player not found in game' },
+        { error: 'Game not found' },
         { status: 404 }
       )
     }
 
-    const player = playerResult.rows[0]
-    const currentScore = player.score || 0
-    const currentFoundWords = player.found_words || []
+    const game = gameResult[0]
     
-    // Check if word was already found by this player
-    if (currentFoundWords.map((w: string) => w.toLowerCase()).includes(word.toLowerCase())) {
+    // Check if game is active
+    if (game.status !== 'active') {
+      console.info('[Multiplayer] Game not active', { gameId, status: game.status });
       return NextResponse.json(
-        { error: 'Word already found' },
+        { error: 'Game is not active' },
         { status: 400 }
       )
     }
 
-    // 4. Calculate score on the server
-    const scoreForWord = calculateScore(word.length);
-
-    // Update player's score and found words
-    const newScore = currentScore + scoreForWord
-    const newFoundWords = [...currentFoundWords, word]
-
-    try {
-      await query(`
-        UPDATE game_players 
-        SET score = $1, found_words = $2, updated_at = NOW()
-        WHERE game_id = $3 AND user_id = $4
-      `, [newScore, newFoundWords, gameId, userId])
-    } catch (error) {
-      console.error('Error updating player score:', error)
+    const submittedWord = word.toLowerCase().trim()
+    
+    // Basic server-side validation (length checks)
+    if (submittedWord.length < 3) {
+      console.info('[Multiplayer] Word too short', { gameId, word: submittedWord });
       return NextResponse.json(
-        { error: 'Failed to update score' },
+        { success: false, error: 'Word must be at least 3 letters long' },
+        { status: 200 }
+      )
+    }
+
+    if (submittedWord.length > game.base_word.length) {
+      console.info('[Multiplayer] Word too long', { gameId, word: submittedWord, baseWord: game.base_word });
+      return NextResponse.json(
+        { success: false, error: 'Word cannot be longer than the base word' },
+        { status: 200 }
+      )
+    }
+
+    // Trust client-side validation result (isValid parameter)
+    // This eliminates the need for server-side word validation against the database
+    console.info('[Multiplayer] Client-side validation result', { 
+      gameId, 
+      word: submittedWord, 
+      isValid 
+    });
+
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid word' },
+        { status: 200 }
+      )
+    }
+
+    // Check if word was already submitted by this player
+    const existingSubmission = await sql`
+      SELECT id FROM game_submissions 
+      WHERE game_id = ${gameId} AND user_id = ${userId} AND word = ${submittedWord}
+    `
+
+    if (existingSubmission && existingSubmission.length > 0) {
+      console.info('[Multiplayer] Word already submitted', { gameId, userId, word: submittedWord });
+      return NextResponse.json(
+        { success: false, error: 'Word already submitted' },
+        { status: 200 }
+      )
+    }
+
+    // Calculate score based on word length
+    const score = submittedWord.length * 10
+
+    // Record the submission
+    try {
+      await sql`
+        INSERT INTO game_submissions (game_id, user_id, username, word, score, submitted_at)
+        VALUES (${gameId}, ${userId}, ${username}, ${submittedWord}, ${score}, NOW())
+      `
+
+      // Update player's total score
+      await sql`
+        UPDATE game_players 
+        SET score = score + ${score}
+        WHERE game_id = ${gameId} AND user_id = ${userId}
+      `
+
+      console.info('[Multiplayer] Word submission successful', { 
+        gameId, 
+        userId, 
+        word: submittedWord, 
+        score 
+      });
+
+      return NextResponse.json({
+        success: true,
+        word: submittedWord,
+        score,
+        message: 'Word submitted successfully'
+      })
+
+    } catch (error) {
+      console.error('[Multiplayer] Error recording submission', { gameId, error });
+      return NextResponse.json(
+        { error: 'Failed to record submission' },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ 
-      success: true,
-      newScore,
-      newFoundWords,
-      scoreAdded: scoreForWord
-    })
-
   } catch (error) {
-    console.error('Error in submit word:', error)
+    console.error('[Multiplayer] Error in submit-word handler', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     // Directly query all games and all players
     const games = await sql`SELECT id, base_word, is_public, status, created_by, current_round, time_limit, max_players, created_at FROM games`
-    const players = await sql`SELECT game_id FROM game_players`
+    const players = await sql`SELECT game_id, username, score FROM game_players ORDER BY score DESC`
 
     // In-memory filter: public, waiting, at least one player
     const publicGames = games.filter(game => {
@@ -21,10 +21,13 @@ export async function GET(request: NextRequest) {
       const playerCount = players.filter(p => p.game_id === game.id).length
       return playerCount > 0 && playerCount < game.max_players
     }).map(game => {
-      const playerCount = players.filter(p => p.game_id === game.id).length
+      const gamePlayers = players.filter(p => p.game_id === game.id)
+      const playerCount = gamePlayers.length
       return {
         ...game,
-        player_count: playerCount
+        player_count: playerCount,
+        available_slots: game.max_players - playerCount,
+        players: gamePlayers // Include player information with scores
       }
     })
 

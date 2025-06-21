@@ -38,10 +38,19 @@ export function useMultiplayer(gameId?: string, isMultiplayer = false) {
   useEffect(() => {
     if (!isMultiplayer || !gameId) return
 
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 3;
+
     const pollGameState = async () => {
       try {
         const response = await fetch(`/api/games/${gameId}/lobby`)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json()
+        consecutiveErrors = 0; // Reset error count on success
         
         if (data.game) {
           const game = data.game
@@ -69,7 +78,14 @@ export function useMultiplayer(gameId?: string, isMultiplayer = false) {
           setLastSync(Date.now())
         }
       } catch (error) {
+        consecutiveErrors++;
         console.error('Error polling game state:', error)
+        
+        // If we have too many consecutive errors, stop polling
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error('Too many consecutive errors, stopping polling');
+          return;
+        }
       }
     }
 
@@ -78,8 +94,8 @@ export function useMultiplayer(gameId?: string, isMultiplayer = false) {
     
     // Only set up polling if game is active
     if (gameStatus === 'active' || gameStatus === 'waiting') {
-      // Set up polling interval (every 2 seconds)
-      pollingIntervalRef.current = setInterval(pollGameState, 2000)
+      // Set up polling interval (every 3 seconds for better performance)
+      pollingIntervalRef.current = setInterval(pollGameState, 3000)
     }
 
     return () => {
