@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { neon } from '@neondatabase/serverless'
 
 export async function POST(
   request: NextRequest,
@@ -16,18 +16,21 @@ export async function POST(
       )
     }
 
+    // Create a fresh database connection for this request
+    const sql = neon(process.env.DATABASE_URL!)
+
     // Mark this player as ready
-    await query(`
+    await sql`
       UPDATE game_players SET ready = true, updated_at = NOW()
-      WHERE game_id = $1 AND user_id = $2
-    `, [gameId, userId])
+      WHERE game_id = ${gameId} AND user_id = ${userId}
+    `
 
     // Check if all non-host players are ready (host is always considered ready)
-    const playersResult = await query(`
-      SELECT is_host, ready FROM game_players WHERE game_id = $1
-    `, [gameId])
+    const playersResult = await sql`
+      SELECT is_host, ready FROM game_players WHERE game_id = ${gameId}
+    `
 
-    const nonHostPlayers = playersResult.rows.filter((row: any) => !row.is_host)
+    const nonHostPlayers = playersResult.filter((row: any) => !row.is_host)
     const allNonHostReady = nonHostPlayers.length > 0 && nonHostPlayers.every((row: any) => row.ready)
 
     // Don't automatically start the game - let the host do it manually
@@ -59,11 +62,14 @@ export async function DELETE(
       )
     }
 
+    // Create a fresh database connection for this request
+    const sql = neon(process.env.DATABASE_URL!)
+
     // Mark this player as unready
-    await query(`
+    await sql`
       UPDATE game_players SET ready = false, updated_at = NOW()
-      WHERE game_id = $1 AND user_id = $2
-    `, [gameId, userId])
+      WHERE game_id = ${gameId} AND user_id = ${userId}
+    `
 
     return NextResponse.json({ success: true })
   } catch (error) {

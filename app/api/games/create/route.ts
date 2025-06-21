@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { neon } from '@neondatabase/serverless'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,75 +17,66 @@ export async function POST(request: NextRequest) {
 
     console.log('[Create Game API] Creating game with:', { isPublic, createdBy, wordLength, timeLimit, username: playerUsername });
 
-    // Get a random word of the specified length
-    let wordResult
+    // Create a fresh database connection for this request
+    const sql = neon(process.env.DATABASE_URL!)
+
+    // Use a transaction to prevent race conditions
+    await sql`BEGIN`
+
     try {
-      wordResult = await query(
-        `SELECT word FROM words WHERE length = $1 ORDER BY random() LIMIT 1`,
-        [wordLength]
-      )
+      // Get a random word of the specified length
+      const wordResult = await sql`
+        SELECT word FROM words WHERE length = ${wordLength} ORDER BY random() LIMIT 1
+      `
+
+      if (!wordResult || wordResult.length === 0) {
+        await sql`ROLLBACK`
+        return NextResponse.json(
+          { error: `No words found with length ${wordLength}` },
+          { status: 400 }
+        )
+      }
+
+      const baseWord = wordResult[0].word
+
+      // Create the game
+      const gameResult = await sql`
+        INSERT INTO games (base_word, is_public, created_by, status, current_round, time_limit, max_players)
+        VALUES (${baseWord}, ${isPublic}, ${createdBy}, 'waiting', 1, ${timeLimit}, 4)
+        RETURNING *
+      `
+
+      if (!gameResult || gameResult.length === 0) {
+        await sql`ROLLBACK`
+        return NextResponse.json(
+          { error: 'Failed to create game' },
+          { status: 500 }
+        )
+      }
+
+      const game = gameResult[0]
+
+      // Add the creator as the first player
+      await sql`
+        INSERT INTO game_players (game_id, user_id, username, score, is_host)
+        VALUES (${game.id}, ${createdBy}, ${playerUsername}, 0, true)
+      `
+
+      await sql`COMMIT`
+
+      return NextResponse.json({ 
+        gameId: game.id,
+        game: game 
+      })
+
     } catch (error) {
-      console.error('Error getting random word:', error)
-      return NextResponse.json(
-        { error: 'Failed to get random word' },
-        { status: 500 }
-      )
-    }
-
-    if (!wordResult || !wordResult.rows || wordResult.rows.length === 0) {
-      return NextResponse.json(
-        { error: `No words found with length ${wordLength}` },
-        { status: 400 }
-      )
-    }
-
-    const baseWord = wordResult.rows[0].word
-
-    // Create the game
-    let gameResult
-    try {
-      gameResult = await query(
-        `INSERT INTO games (base_word, is_public, created_by, status, current_round, time_limit, max_players)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
-        [baseWord, isPublic, createdBy, 'waiting', 1, timeLimit, 4]
-      )
-    } catch (error) {
-      console.error('Error creating game:', error)
+      await sql`ROLLBACK`
+      console.error('Error in create game transaction:', error)
       return NextResponse.json(
         { error: 'Failed to create game' },
         { status: 500 }
       )
     }
-
-    if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
-      return NextResponse.json(
-        { error: 'Failed to create game' },
-        { status: 500 }
-      )
-    }
-
-    const game = gameResult.rows[0]
-
-    // Add the creator as the first player
-    try {
-      await query(
-        `INSERT INTO game_players (game_id, user_id, username, score, is_host)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [game.id, createdBy, playerUsername, 0, true]
-      )
-    } catch (error) {
-      console.error('Error adding player to game:', error)
-      return NextResponse.json(
-        { error: 'Failed to add player to game' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ 
-      gameId: game.id,
-      game: game 
-    })
 
   } catch (error) {
     console.error('Error in create game:', error)

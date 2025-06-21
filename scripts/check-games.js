@@ -1,4 +1,4 @@
-const { query } = require('../lib/db.js');
+const { query } = require('../lib/db');
 
 async function checkGames() {
   try {

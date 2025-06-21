@@ -12,6 +12,7 @@ import { toast } from '@/hooks/use-toast'
 import { Navbar } from '@/components/navbar'
 import { Copy, Play, Users, Crown, LogOut, Settings, X } from 'lucide-react'
 import { GameSettingsForm } from '@/components/game-settings-form'
+import { Switch } from '@/components/ui/switch'
 
 interface Player {
   id: string
@@ -62,6 +63,7 @@ export default function GameLobbyPage() {
   const [kickingPlayer, setKickingPlayer] = useState<string | null>(null)
   const [hasJoined, setHasJoined] = useState(false)
   const [joinAttempted, setJoinAttempted] = useState(false)
+  const [updatingPublic, setUpdatingPublic] = useState(false)
 
   // Helper function to get a proper username
   const getProperUsername = (player: Player) => {
@@ -76,10 +78,12 @@ export default function GameLobbyPage() {
 
   // Join the game automatically when accessing via URL
   const joinGame = async () => {
+    console.log('[Lobby] Join game called:', { user: !!user, gameId, joinAttempted });
     if (!user || !gameId || joinAttempted) return
 
     setJoinAttempted(true)
     try {
+      console.log('[Lobby] Attempting to join game...');
       const response = await fetch('/api/games/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,9 +95,11 @@ export default function GameLobbyPage() {
       })
 
       const data = await response.json()
+      console.log('[Lobby] Join response:', data);
       
       if (response.ok) {
         setHasJoined(true)
+        console.log('[Lobby] Successfully joined game, hasJoined set to true');
         if (data.rejoined) {
           console.log('[Lobby] Rejoined existing game')
         } else {
@@ -126,18 +132,22 @@ export default function GameLobbyPage() {
   // Fetch game lobby info
   const fetchLobbyInfo = async () => {
     try {
+      console.log('[Lobby] Fetching lobby info for game:', gameId);
       const response = await fetch(`/api/games/${gameId}/lobby`)
       const data = await response.json()
       
       if (response.ok) {
         console.log('[Lobby] Fetched game data:', {
           timeLimit: data.game.time_limit,
-          maxPlayers: data.game.max_players
+          maxPlayers: data.game.max_players,
+          playerCount: data.game.player_count,
+          players: data.game.game_players?.map((p: any) => ({ username: p.username, ready: p.ready, is_host: p.is_host }))
         })
         setGame(data.game)
         
         // Check if current user is in the game
         const currentPlayer = data.game.game_players?.find((p: Player) => p.user_id === user?.id)
+        console.log('[Lobby] Current player found:', currentPlayer);
         if (currentPlayer) {
           setHasJoined(true)
           setReady(currentPlayer.ready)
@@ -152,6 +162,7 @@ export default function GameLobbyPage() {
           }, 1000)
         }
       } else {
+        console.error('[Lobby] Failed to fetch lobby info:', data.error);
         toast({
           title: "Error",
           description: data.error || "Failed to load lobby",
@@ -174,6 +185,7 @@ export default function GameLobbyPage() {
 
   // Initial setup: join game and fetch lobby info
   useEffect(() => {
+    console.log('[Lobby] Initial setup effect triggered:', { gameId, user: !!user });
     if (gameId && user) {
       // First try to join the game
       joinGame().then(() => {
@@ -185,19 +197,50 @@ export default function GameLobbyPage() {
 
   // Polling for lobby updates (only after joining)
   useEffect(() => {
+    console.log('[Lobby] Polling effect triggered:', { gameId, hasJoined });
     if (gameId && hasJoined) {
-      const interval = setInterval(fetchLobbyInfo, 2000) // Refresh every 2 seconds
-      return () => clearInterval(interval)
+      console.log('[Lobby] Starting polling interval');
+      const interval = setInterval(() => {
+        console.log('[Lobby] Polling for updates...');
+        fetchLobbyInfo();
+      }, 2000) // Refresh every 2 seconds
+      return () => {
+        console.log('[Lobby] Clearing polling interval');
+        clearInterval(interval);
+      }
     }
   }, [gameId, hasJoined])
 
+  // Force polling to start after a delay (for debugging)
   useEffect(() => {
+    console.log('[Lobby] Force polling setup');
+    if (gameId) {
+      const forceInterval = setInterval(() => {
+        console.log('[Lobby] FORCE POLLING - fetching lobby info');
+        fetchLobbyInfo();
+      }, 3000) // Force refresh every 3 seconds
+      
+      return () => {
+        console.log('[Lobby] Clearing force polling interval');
+        clearInterval(forceInterval);
+      }
+    }
+  }, [gameId])
+
+  useEffect(() => {
+    console.log('[Lobby] Game data updated:', game);
     if (game && game.game_players) {
       // Consider host as always ready, check only non-host players
       const nonHostPlayers = game.game_players.filter(p => !p.is_host)
       const allReady = game.game_players.length > 1 && // Require at least 2 players total
         nonHostPlayers.length > 0 && // Require at least one non-host player
         nonHostPlayers.every(p => p.ready) // All non-host players must be ready
+      console.log('[Lobby] All players ready check:', { 
+        totalPlayers: game.game_players.length, 
+        nonHostPlayers: nonHostPlayers.length,
+        allReady,
+        nonHostPlayersReady: nonHostPlayers.map(p => ({ username: p.username, ready: p.ready }))
+      });
       setAllPlayersReady(allReady)
     }
   }, [game])
@@ -477,8 +520,9 @@ export default function GameLobbyPage() {
     }
   }
 
-  // Check if current user is host
-  const isHost = game?.created_by === user?.id;
+  // Check if current user is the host
+  const currentPlayer = game?.game_players?.find((p: Player) => p.user_id === user?.id)
+  const isHost = currentPlayer?.is_host || false
 
   // Automatic exit: call leave API on unload or navigation with 10-second grace period
   useEffect(() => {
@@ -735,6 +779,28 @@ export default function GameLobbyPage() {
                         showSubmit={true}
                         updating={updatingSettings}
                       />
+                      {isHost && (
+                        <div className="flex items-center space-x-2 mt-4">
+                          <Switch
+                            id="public-toggle"
+                            checked={game.is_public}
+                            onCheckedChange={async (checked) => {
+                              setUpdatingPublic(true)
+                              await fetch(`/api/games/${gameId}/settings`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ is_public: checked }),
+                              })
+                              setGame((g) => g && { ...g, is_public: checked })
+                              setUpdatingPublic(false)
+                            }}
+                            disabled={updatingPublic}
+                          />
+                          <Label htmlFor="public-toggle" className="text-amber-100">
+                            {game.is_public ? 'Public (visible to everyone)' : 'Private (invite only)'}
+                          </Label>
+                        </div>
+                      )}
                     </DialogContent>
                   </Dialog>
                 )}

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { neon } from '@neondatabase/serverless'
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
 
 export async function PUT(
   request: NextRequest,
@@ -16,20 +18,25 @@ export async function PUT(
       )
     }
 
-    // Check if the user is the host of this game
-    const playerResult = await query(`
-      SELECT is_host FROM game_players
-      WHERE game_id = $1 AND user_id = $2
-    `, [gameId, userId])
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 })
+    }
+    const sql = neon(process.env.DATABASE_URL)
 
-    if (!playerResult.rows || playerResult.rows.length === 0) {
+    // Check if the user is the host of this game
+    const playerResult = await sql`
+      SELECT is_host FROM game_players
+      WHERE game_id = ${gameId} AND user_id = ${userId}
+    `
+
+    if (!playerResult || playerResult.length === 0) {
       return NextResponse.json(
         { error: 'Player not found in game' },
         { status: 404 }
       )
     }
 
-    const player = playerResult.rows[0]
+    const player = playerResult[0]
     if (!player.is_host) {
       return NextResponse.json(
         { error: 'Only host can update game settings' },
@@ -38,18 +45,18 @@ export async function PUT(
     }
 
     // Check if game is still in waiting state
-    const gameResult = await query(`
-      SELECT status FROM games WHERE id = $1
-    `, [gameId])
+    const gameResult = await sql`
+      SELECT status FROM games WHERE id = ${gameId}
+    `
 
-    if (!gameResult.rows || gameResult.rows.length === 0) {
+    if (!gameResult || gameResult.length === 0) {
       return NextResponse.json(
         { error: 'Game not found' },
         { status: 404 }
       )
     }
 
-    const game = gameResult.rows[0]
+    const game = gameResult[0]
     if (game.status !== 'waiting') {
       return NextResponse.json(
         { error: 'Cannot update settings after game has started' },
@@ -69,9 +76,6 @@ export async function PUT(
           { status: 400 }
         )
       }
-      updates.push(`time_limit = $${paramIndex}`)
-      values.push(timeLimit)
-      paramIndex++
     }
 
     if (maxPlayers !== undefined) {
@@ -83,21 +87,17 @@ export async function PUT(
       }
       
       // Check if max players is less than current player count
-      const currentPlayerCount = await query(`
-        SELECT COUNT(*) as count FROM game_players WHERE game_id = $1
-      `, [gameId])
+      const currentPlayerCount = await sql`
+        SELECT COUNT(*) as count FROM game_players WHERE game_id = ${gameId}
+      `
       
-      const playerCount = parseInt(currentPlayerCount.rows[0]?.count || '0', 10)
+      const playerCount = parseInt(currentPlayerCount[0]?.count || '0', 10)
       if (maxPlayers < playerCount) {
         return NextResponse.json(
           { error: `Cannot set max players to ${maxPlayers} when there are already ${playerCount} players in the game` },
           { status: 400 }
         )
       }
-      
-      updates.push(`max_players = $${paramIndex}`)
-      values.push(maxPlayers)
-      paramIndex++
     }
 
     if (wordLength !== undefined) {
@@ -107,14 +107,31 @@ export async function PUT(
           { status: 400 }
         )
       }
-      
+    }
+
+    if (timeLimit === undefined && maxPlayers === undefined && wordLength === undefined) {
+      return NextResponse.json(
+        { error: 'No valid settings to update' },
+        { status: 400 }
+      )
+    }
+
+    // Update the game settings - handle each update separately to avoid dynamic SQL
+    if (timeLimit !== undefined) {
+      await sql`UPDATE games SET time_limit = ${timeLimit}, updated_at = NOW() WHERE id = ${gameId}`
+    }
+    
+    if (maxPlayers !== undefined) {
+      await sql`UPDATE games SET max_players = ${maxPlayers}, updated_at = NOW() WHERE id = ${gameId}`
+    }
+    
+    if (wordLength !== undefined) {
       // Get a new random word of the specified length
       let wordResult
       try {
-        wordResult = await query(
-          `SELECT word FROM words WHERE length = $1 ORDER BY random() LIMIT 1`,
-          [wordLength]
-        )
+        wordResult = await sql`
+          SELECT word FROM words WHERE length = ${wordLength} ORDER BY random() LIMIT 1
+        `
       } catch (error) {
         console.error('Error getting random word:', error)
         return NextResponse.json(
@@ -123,35 +140,16 @@ export async function PUT(
         )
       }
 
-      if (!wordResult || !wordResult.rows || wordResult.rows.length === 0) {
+      if (!wordResult || wordResult.length === 0) {
         return NextResponse.json(
           { error: `No words found with length ${wordLength}` },
           { status: 400 }
         )
       }
 
-      const newBaseWord = wordResult.rows[0].word
-      updates.push(`base_word = $${paramIndex}`)
-      values.push(newBaseWord)
-      paramIndex++
+      const newBaseWord = wordResult[0].word
+      await sql`UPDATE games SET base_word = ${newBaseWord}, updated_at = NOW() WHERE id = ${gameId}`
     }
-
-    if (updates.length === 0) {
-      return NextResponse.json(
-        { error: 'No valid settings to update' },
-        { status: 400 }
-      )
-    }
-
-    // Add gameId to values array
-    values.push(gameId)
-
-    // Update the game settings
-    await query(`
-      UPDATE games 
-      SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE id = $${paramIndex}
-    `, values)
 
     return NextResponse.json({ 
       success: true,
@@ -164,5 +162,23 @@ export async function PUT(
       { error: 'Internal server error' },
       { status: 500 }
     )
+  }
+} 
+
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const gameId = params.id
+    const { is_public } = await request.json()
+
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 })
+    }
+    const sql = neon(process.env.DATABASE_URL)
+
+    await sql`UPDATE games SET is_public = ${is_public} WHERE id = ${gameId}`
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 })
   }
 } 

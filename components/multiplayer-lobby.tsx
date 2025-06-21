@@ -22,12 +22,14 @@ interface Game {
   max_players: number
   created_at: string
   player_count: number
+  available_slots: number
   game_players: Array<{
     id: string
     user_id: string
     username: string
     score: number
     is_host: boolean
+    is_ready?: boolean
   }>
 }
 
@@ -42,40 +44,52 @@ export function MultiplayerLobby() {
   const [gameCode, setGameCode] = useState('')
   const [wordLength, setWordLength] = useState(6)
   const [timeLimit, setTimeLimit] = useState(120)
+  const [isFetching, setIsFetching] = useState(false)
 
   // Helper function to get a proper username
   const getProperUsername = (user: any) => {
-    console.log('[MultiplayerLobby] Getting username for user:', user);
-    
-    // Use display name if available
     if (user.displayName) {
-      console.log('[MultiplayerLobby] Using displayName:', user.displayName);
-      return user.displayName;
+      return user.displayName
     }
     
-    // Use username if it's not a UUID
     if (user.username && !user.username.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      console.log('[MultiplayerLobby] Using username:', user.username);
-      return user.username;
+      return user.username
     }
     
-    // Generate username from email
     if (user.email) {
-      const emailPart = user.email.split('@')[0];
-      const generatedUsername = emailPart.charAt(0).toUpperCase() + emailPart.slice(1);
-      console.log('[MultiplayerLobby] Generated username from email:', generatedUsername);
-      return generatedUsername;
+      const emailPart = user.email.split('@')[0]
+      return emailPart.charAt(0).toUpperCase() + emailPart.slice(1)
     }
     
-    // Fallback to user ID (shouldn't happen)
-    console.log('[MultiplayerLobby] Using fallback user ID:', user.id);
-    return user.id;
-  };
+    return user.id
+  }
+
+  // Force refresh public games
+  const forceRefreshGames = async () => {
+    if (isFetching) return // Prevent multiple simultaneous fetches
+    setGames([])
+    setLoading(true)
+    await fetchPublicGames()
+    setLoading(false)
+  }
 
   // Fetch public games
   const fetchPublicGames = async () => {
+    if (isFetching) return // Prevent multiple simultaneous fetches
+    
+    setIsFetching(true)
     try {
-      const response = await fetch('/api/games/public')
+      const timestamp = Date.now()
+      const url = `/api/games/public?t=${timestamp}`
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
+      
       const data = await response.json()
       
       if (response.ok) {
@@ -85,12 +99,14 @@ export function MultiplayerLobby() {
       }
     } catch (error) {
       console.error('Error fetching games:', error)
+    } finally {
+      setIsFetching(false)
     }
   }
 
   useEffect(() => {
     fetchPublicGames()
-    const interval = setInterval(fetchPublicGames, 5000) // Refresh every 5 seconds
+    const interval = setInterval(fetchPublicGames, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -104,6 +120,8 @@ export function MultiplayerLobby() {
       })
       return
     }
+
+    if (creating) return // Prevent multiple simultaneous creates
 
     setCreating(true)
     try {
@@ -157,6 +175,8 @@ export function MultiplayerLobby() {
       return
     }
 
+    if (joining === gameCode) return // Prevent multiple simultaneous joins
+
     setJoining(gameCode)
     try {
       const response = await fetch('/api/games/join', {
@@ -176,7 +196,7 @@ export function MultiplayerLobby() {
           title: "Joined game!",
           description: "Redirecting to lobby...",
         })
-        router.push(`/play/multiplayer/${gameCode}/lobby`)
+        router.push(`/play/multiplayer/${gameCode.trim()}/lobby`)
       } else {
         toast({
           title: "Failed to join game",
@@ -206,6 +226,8 @@ export function MultiplayerLobby() {
       })
       return
     }
+
+    if (joining === gameId) return // Prevent multiple simultaneous joins
 
     setJoining(gameId)
     try {
@@ -346,7 +368,18 @@ export function MultiplayerLobby() {
       {/* Public Games Section */}
       <Card className="score-card">
         <CardHeader>
-          <CardTitle className="text-amber-100">Public Games</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-amber-100">Public Games</CardTitle>
+            <Button
+              onClick={forceRefreshGames}
+              disabled={loading || isFetching}
+              size="sm"
+              variant="outline"
+              className="text-amber-100 border-amber-600 hover:bg-amber-600 hover:text-white"
+            >
+              {loading || isFetching ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -361,13 +394,18 @@ export function MultiplayerLobby() {
                   className="flex items-center justify-between p-3 felt-pattern rounded-lg"
                 >
                   <div className="flex-1">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 mb-1">
                       <span className="font-semibold text-amber-100">
                         {game.base_word.length} letters
                       </span>
                       <Badge variant="secondary" className="text-xs">
                         {game.player_count}/{game.max_players} players
                       </Badge>
+                      {game.available_slots > 0 && (
+                        <Badge variant="default" className="text-xs bg-green-600">
+                          {game.available_slots} slot{game.available_slots !== 1 ? 's' : ''} available
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="text-xs">
                         {game.time_limit}s
                       </Badge>
@@ -377,14 +415,17 @@ export function MultiplayerLobby() {
                         ? game.creator_username 
                         : 'Anonymous'}
                     </p>
+                    <p className="text-xs text-amber-300 mt-1">
+                      Created {new Date(game.created_at).toLocaleTimeString()}
+                    </p>
                   </div>
                   <Button
                     onClick={() => joinPublicGame(game.id)}
-                    disabled={joining === game.id}
+                    disabled={joining === game.id || game.available_slots === 0}
                     size="sm"
                     className="wood-button"
                   >
-                    {joining === game.id ? 'Joining...' : 'Join'}
+                    {joining === game.id ? 'Joining...' : game.available_slots === 0 ? 'Full' : 'Join'}
                   </Button>
                 </div>
               ))}
@@ -394,4 +435,4 @@ export function MultiplayerLobby() {
       </Card>
     </div>
   )
-}
+} 

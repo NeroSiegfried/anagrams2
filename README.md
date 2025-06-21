@@ -29,6 +29,61 @@ Continue building your app on:
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
 
+## Multiplayer System
+
+The game includes a comprehensive multiplayer system with real-time lobby management and game coordination.
+
+### Features
+
+- **Public Game Lobby**: Browse and join public games
+- **Private Games**: Create private games with invite codes
+- **Real-time Updates**: Live updates of player status and game state
+- **Host Controls**: Game hosts can manage settings and start games
+- **Player Management**: Kick players, manage readiness status
+- **Automatic Cleanup**: Stale games are automatically cleaned up
+
+### Multiplayer API Endpoints
+
+- `POST /api/games/create` - Create a new game
+- `GET /api/games/public` - List public games
+- `POST /api/games/join` - Join a game
+- `GET /api/games/[id]/lobby` - Get lobby information
+- `POST /api/games/[id]/ready` - Mark player as ready
+- `POST /api/games/[id]/start` - Start the game (host only)
+- `POST /api/games/[id]/leave` - Leave the game
+- `POST /api/games/[id]/kick` - Kick a player (host only)
+
+### Database Cleanup
+
+The system includes automatic cleanup of stale data:
+
+- **Empty Games**: Games with no players are automatically removed
+- **Stale Waiting Games**: Games waiting for more than 1 hour are cleaned up
+- **Stale Active Games**: Games active for more than 2 hours are cleaned up
+- **Orphaned Data**: Orphaned player entries are removed
+
+#### Manual Cleanup
+
+Run the cleanup script manually:
+```bash
+npm run cleanup
+```
+
+#### API Cleanup
+
+Trigger cleanup via API:
+```bash
+curl -X POST https://your-domain.com/api/cleanup
+```
+
+#### Automated Cleanup
+
+Set up a cron job to run cleanup regularly:
+```bash
+# Run every 30 minutes
+*/30 * * * * curl -X POST https://your-domain.com/api/cleanup
+```
+
 ## Authentication System
 
 The game includes a comprehensive authentication system designed to be easily extensible for OAuth providers (Google, GitHub, etc.) in the future.

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { neon } from '@neondatabase/serverless'
+
+// Load environment variables explicitly
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
 
 export async function GET(
   request: NextRequest,
@@ -15,22 +19,31 @@ export async function GET(
       )
     }
 
+    if (!process.env.DATABASE_URL) {
+      console.error('[Lobby API] DATABASE_URL not set');
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 });
+    }
+
+    // Create a fresh database connection for this request
+    const sql = neon(process.env.DATABASE_URL);
+    console.log('[Lobby API] Fresh database connection created');
+
     // Get game details
-    const gameResult = await query(`
+    const gameResult = await sql`
       SELECT g.*, u.username as creator_username
       FROM games g
       LEFT JOIN users u ON g.created_by = u.id
-      WHERE g.id = $1
-    `, [gameId])
+      WHERE g.id = ${gameId}
+    `;
 
-    if (!gameResult || !gameResult.rows || gameResult.rows.length === 0) {
+    if (!gameResult || gameResult.length === 0) {
       return NextResponse.json(
         { error: 'Game not found' },
         { status: 404 }
       )
     }
 
-    const game = gameResult.rows[0]
+    const game = gameResult[0];
 
     // Server-side check to end the game if time is up
     if (game.status === 'active' && game.started_at) {
@@ -40,7 +53,7 @@ export async function GET(
 
       if (elapsedSeconds > game.time_limit) {
         // Time is up, update game status to finished
-        await query(`UPDATE games SET status = 'finished', updated_at = NOW() WHERE id = $1`, [gameId]);
+        await sql`UPDATE games SET status = 'finished', updated_at = NOW() WHERE id = ${gameId}`;
         game.status = 'finished'; // Update the object we're about to send
         console.log(`[Lobby API] Game ${gameId} time is up. Status set to finished.`);
       }
@@ -52,25 +65,25 @@ export async function GET(
     }
 
     // Get players for this game
-    const playersResult = await query(`
+    const playersResult = await sql`
       SELECT id, user_id, username, score, is_host, ready
       FROM game_players
-      WHERE game_id = $1
+      WHERE game_id = ${gameId}
       ORDER BY joined_at ASC
-    `, [gameId])
+    `;
 
     const gameWithPlayers = {
       ...game,
-      game_players: playersResult?.rows || [],
-      player_count: playersResult?.rows?.length || 0
+      game_players: playersResult || [],
+      player_count: playersResult?.length || 0
     }
 
     return NextResponse.json({ game: gameWithPlayers })
 
   } catch (error) {
-    console.error('Error in lobby info:', error)
+    console.error('[Lobby API] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: String(error) },
       { status: 500 }
     )
   }
@@ -91,21 +104,29 @@ export async function POST(
       )
     }
 
+    if (!process.env.DATABASE_URL) {
+      console.error('[Lobby API] DATABASE_URL not set');
+      return NextResponse.json({ error: 'Database configuration error' }, { status: 500 });
+    }
+
+    // Create a fresh database connection for this request
+    const sql = neon(process.env.DATABASE_URL);
+
     if (action === 'start') {
       // Check if user is host
-      const playerResult = await query(`
+      const playerResult = await sql`
         SELECT is_host FROM game_players 
-        WHERE game_id = $1 AND user_id = $2
-      `, [gameId, userId])
+        WHERE game_id = ${gameId} AND user_id = ${userId}
+      `;
 
-      if (!playerResult || !playerResult.rows || playerResult.rows.length === 0) {
+      if (!playerResult || playerResult.length === 0) {
         return NextResponse.json(
           { error: 'Player not found in game' },
           { status: 404 }
         )
       }
 
-      const player = playerResult.rows[0]
+      const player = playerResult[0];
       if (!player.is_host) {
         return NextResponse.json(
           { error: 'Only host can start the game' },
@@ -115,9 +136,7 @@ export async function POST(
 
       // Update game status to active
       try {
-        await query(`
-          UPDATE games SET status = 'active' WHERE id = $1
-        `, [gameId])
+        await sql`UPDATE games SET status = 'active' WHERE id = ${gameId}`;
       } catch (error) {
         return NextResponse.json(
           { error: 'Failed to start game' },
@@ -134,9 +153,9 @@ export async function POST(
     )
 
   } catch (error) {
-    console.error('Error in lobby action:', error)
+    console.error('[Lobby API] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: String(error) },
       { status: 500 }
     )
   }
