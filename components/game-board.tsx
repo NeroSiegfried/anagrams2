@@ -59,6 +59,7 @@ export function GameBoard({
   const hasStartedNewGameRef = useRef(false)
   const lastScoreUpdateRef = useRef(0) // Rate limiting for score updates
   const [tileSize, setTileSize] = useState(56); // px, default desktop size
+  const [tileGap, setTileGap] = useState(5); // px, default gap
   const tileContainerRef = useRef<HTMLDivElement>(null);
   const ongoingRequestRef = useRef<Promise<any> | null>(null); // Track ongoing API requests
 
@@ -1040,18 +1041,41 @@ export function GameBoard({
       if (!tileContainerRef.current || !gameState.baseWord) return;
       const containerWidth = tileContainerRef.current.offsetWidth;
       const letterCount = gameState.baseWord.length;
-      let rows = 1;
-      let maxPerRow = letterCount;
-      if (letterCount > 7) {
-        rows = 2;
-        maxPerRow = Math.ceil(letterCount / 2);
+      
+      // Determine the maximum letters in any row
+      let maxPerRow;
+      if (letterCount <= 7) {
+        maxPerRow = letterCount; // Single row
+      } else {
+        maxPerRow = Math.ceil(letterCount / 2); // Two rows, use the larger row size
       }
-      // 2px margin per tile (1px each side)
-      const margin = 2;
-      // Calculate max tile size for the row
-      let size = Math.floor((containerWidth - margin * (maxPerRow - 1)) / maxPerRow);
-      // Clamp to desktop max (56px)
-      size = Math.min(size, 56);
+      
+      // 5px gap between tiles
+      const gap = 5;
+      // Calculate total gaps needed (one less than the number of tiles in the row)
+      const totalGaps = maxPerRow - 1;
+      
+      // Calculate available width for tiles (container width minus total gap width)
+      const availableWidth = containerWidth - (totalGaps * gap);
+      
+      // Calculate tile size (available width divided by number of tiles in the row)
+      let size = Math.floor(availableWidth / maxPerRow);
+      
+      // Ensure minimum size for usability (at least 40px)
+      size = Math.max(size, 40);
+      
+      // Apply different maximums based on screen size
+      const isDesktop = window.innerWidth >= 768;
+      if (isDesktop) {
+        // Desktop: clamp to 56px if there's enough space
+        if (availableWidth >= maxPerRow * 56 + totalGaps * gap) {
+          size = 56;
+        }
+      } else {
+        // Mobile: clamp to 80px maximum for good touch interaction
+        size = Math.min(size, 80);
+      }
+      
       setTileSize(size);
     }
     updateTileSize();
@@ -1059,9 +1083,21 @@ export function GameBoard({
     return () => window.removeEventListener('resize', updateTileSize);
   }, [gameState.baseWord]);
 
-  // Helper to split letters into rows for 8+ letters
+  // Helper to split letters into rows for 8+ letters, but only if needed
   function getRows(letters: string[]) {
     if (letters.length <= 7) return [letters];
+    if (!tileContainerRef.current) return [letters];
+    const containerWidth = tileContainerRef.current.offsetWidth;
+    const isDesktop = window.innerWidth >= 768;
+    const maxTileSize = isDesktop ? 56 : 80;
+    const gap = 5;
+    const totalGaps = letters.length - 1;
+    const requiredWidth = letters.length * maxTileSize + totalGaps * gap;
+    if (containerWidth >= requiredWidth) {
+      // All tiles fit in one row at max size
+      return [letters];
+    }
+    // Otherwise, split into two balanced rows
     const firstRow = letters.slice(0, Math.ceil(letters.length / 2));
     const secondRow = letters.slice(Math.ceil(letters.length / 2));
     return [firstRow, secondRow];
@@ -1154,12 +1190,10 @@ export function GameBoard({
                         style={{
                           width: tileSize,
                           height: tileSize,
-                          marginLeft: i === 0 ? 0 : 2,
+                          marginLeft: i === 0 ? 0 : 5,
                           fontSize: tileSize * 0.8,
                           minWidth: tileSize,
                           minHeight: tileSize,
-                          maxWidth: 56,
-                          maxHeight: 56,
                         }}
                         onClick={() => !selectedIndices.includes(globalIdx) && gameState.timeLeft > 0 && (!multiplayer || gameState.isActive) && addLetterToWord(globalIdx)}
                       >
@@ -1196,12 +1230,10 @@ export function GameBoard({
                         style={{
                           width: tileSize,
                           height: tileSize,
-                          marginLeft: i === 0 ? 0 : 2,
+                          marginLeft: i === 0 ? 0 : 5,
                           fontSize: tileSize * 0.8,
                           minWidth: tileSize,
                           minHeight: tileSize,
-                          maxWidth: 56,
-                          maxHeight: 56,
                           background: filled ? undefined : 'linear-gradient(145deg, #0f5d2a 0%, #1a7a3e 100%)',
                           border: filled ? undefined : '2px solid #8b4513',
                           boxShadow: filled ? undefined : 'inset 0 2px 4px rgba(0,0,0,0.3)',
