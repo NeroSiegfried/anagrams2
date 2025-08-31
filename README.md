@@ -14,7 +14,6 @@ A cozy word-play challenge with casino-style elegance. Play solo or challenge fr
 
 ### Prerequisites
 
-- Node.js 18+ 
 - npm or pnpm
 - PostgreSQL database (Neon recommended)
 
@@ -22,7 +21,7 @@ A cozy word-play challenge with casino-style elegance. Play solo or challenge fr
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/NeroSiegfried/anagrams2/
 cd anagrams2
 ```
 
